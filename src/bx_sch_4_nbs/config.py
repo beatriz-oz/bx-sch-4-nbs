@@ -5,6 +5,9 @@ class Settings(BaseSettings):
     database_url: str
     encryption_key: str
     hash_pepper: str
+    jwt_secret_key: str
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 60 * 24
 
     model_config = SettingsConfigDict(env_file=".env")
 
