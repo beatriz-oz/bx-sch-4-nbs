@@ -16,9 +16,7 @@ def create_user(
 ) -> User:
     email_hash = hash_email(new_user.email)
 
-    existing_user = session.exec(
-        select(User).where(User.email_hash == email_hash)
-    ).first()
+    existing_user = session.exec(select(User).where(User.email_hash == email_hash)).first()
 
     if existing_user is not None:
         raise DuplicateResourceError("A user with this email already exists.")
@@ -45,6 +43,4 @@ def create_user(
     except IntegrityError as error:
         session.rollback()
 
-        raise DuplicateResourceError(
-            "A user with this email already exists."
-        ) from error
+        raise DuplicateResourceError("A user with this email already exists.") from error

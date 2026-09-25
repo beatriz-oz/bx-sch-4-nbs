@@ -12,6 +12,7 @@ setup_exception_handlers(app)
 
 DatabaseSession = Annotated[Session, Depends(get_session)]
 
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}

@@ -1,4 +1,6 @@
 import hashlib
+import hmac
+import re
 
 from cryptography.fernet import Fernet
 from pwdlib import PasswordHash
@@ -6,7 +8,20 @@ from pwdlib import PasswordHash
 from bx_sch_4_nbs.config import settings
 
 password_hasher = PasswordHash.recommended()
-email_cipher = Fernet(settings.encryption_key.encode())
+cipher = Fernet(settings.encryption_key.encode())
+hash_pepper = settings.hash_pepper.encode()
+
+
+def _hash(value: str) -> str:
+    return hmac.new(hash_pepper, value.encode(), hashlib.sha256).hexdigest()
+
+
+def _encrypt(value: str) -> str:
+    return cipher.encrypt(value.encode()).decode()
+
+
+def _decrypt(encrypted_value: str) -> str:
+    return cipher.decrypt(encrypted_value.encode()).decode()
 
 
 def normalize_email(email: str) -> str:
@@ -14,17 +29,31 @@ def normalize_email(email: str) -> str:
 
 
 def hash_email(email: str) -> str:
-    normalized_email = normalize_email(email)
-    return hashlib.sha256(normalized_email.encode()).hexdigest()
+    return _hash(normalize_email(email))
 
 
 def encrypt_email(email: str) -> str:
-    normalized_email = normalize_email(email)
-    return email_cipher.encrypt(normalized_email.encode()).decode()
+    return _encrypt(normalize_email(email))
 
 
 def decrypt_email(encrypted_email: str) -> str:
-    return email_cipher.decrypt(encrypted_email.encode()).decode()
+    return _decrypt(encrypted_email)
+
+
+def normalize_phone(phone: str) -> str:
+    return re.sub(r"\D", "", phone)
+
+
+def hash_phone(phone: str) -> str:
+    return _hash(normalize_phone(phone))
+
+
+def encrypt_phone(phone: str) -> str:
+    return _encrypt(normalize_phone(phone))
+
+
+def decrypt_phone(encrypted_phone: str) -> str:
+    return _decrypt(encrypted_phone)
 
 
 def hash_password(password: str) -> str:
