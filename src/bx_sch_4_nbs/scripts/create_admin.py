@@ -47,6 +47,7 @@ def main() -> None:
             password_hash=hash_password(password),
             role=UserRole.SUPER_ADMIN,
             is_active=True,
+            email_verified=True
         )
         session.add(admin)
         session.commit()

@@ -4,7 +4,7 @@ from decimal import Decimal
 from sqlalchemy import Column, DateTime, Numeric, Text, UniqueConstraint, func
 from sqlmodel import Field, SQLModel
 
-from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize, Service, UserRole
+from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize, Service, UserRole, VerificationPurpose
 
 
 class User(SQLModel, table=True):
@@ -40,6 +40,9 @@ class User(SQLModel, table=True):
         nullable=True,
     )
     is_active: bool = Field(description="True for regular clients (with password)", default=False, nullable=False)
+    email_verified: bool = Field(
+        description="True after the client confirms the email code", default=False, nullable=False
+    )
     created_at: datetime | None = Field(
         description="Timestamp of when the record was created",
         default=None,
@@ -101,3 +104,16 @@ class UserProfile(SQLModel, table=True):
     cuticle_type: str | None = Field(default=None, max_length=255, nullable=True)
     notes: str | None = Field(sa_column=Column(Text, nullable=True, default=None))
     appointment_frequency_weeks: Decimal | None = Field(default=None, nullable=True)
+
+
+class VerificationCode(SQLModel, table=True):
+    __tablename__ = "verification_codes"
+    __table_args__ = (UniqueConstraint("user_id", "purpose", name="uc_verification_codes_user_purpose"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", nullable=False, ondelete="CASCADE")
+    purpose: VerificationPurpose = Field(nullable=False)
+    code_hash: str = Field(max_length=64, nullable=False)
+    attempts: int = Field(default=0, nullable=False)
+    sent_at: datetime = Field(nullable=False)
+    expires_at: datetime = Field(nullable=False)

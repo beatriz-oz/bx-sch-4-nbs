@@ -27,3 +27,8 @@ class AppointmentStatus(str, Enum):
     COMPLETED = "Completed"
     CANCELLED = "Cancelled"
     NO_SHOW = "No_show"
+
+
+class VerificationPurpose(str, Enum):
+    CHECKIN = "Checkin"
+    ACTIVATION = "Activation"
