@@ -3,7 +3,10 @@ from collections.abc import Sequence
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
-from bx_sch_4_nbs.database.exceptions import DuplicateResourceError, ResourceDoesNotExistError
+from bx_sch_4_nbs.database.exceptions import (
+    DuplicateResourceError,
+    ResourceDoesNotExistError,
+)
 from bx_sch_4_nbs.database.models import PreApprovedInstagram
 
 
@@ -29,3 +32,8 @@ def delete_pre_approved_instagram(session: Session, entry_id: int) -> None:
     if entry is None:
         raise ResourceDoesNotExistError(f"Pre-approved Instagram {entry_id} does not exist.")
     session.delete(entry)
+
+
+def is_pre_approved(session: Session, instagram: str) -> bool:
+    entry = session.exec(select(PreApprovedInstagram).where(PreApprovedInstagram.instagram == instagram)).first()
+    return entry is not None

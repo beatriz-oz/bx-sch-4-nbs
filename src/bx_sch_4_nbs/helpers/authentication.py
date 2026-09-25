@@ -5,10 +5,9 @@ import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import InvalidTokenError
-from sqlmodel import Session
 
 from bx_sch_4_nbs.config import settings
-from bx_sch_4_nbs.database.helpers import get_session
+from bx_sch_4_nbs.database.helpers import DatabaseSession
 from bx_sch_4_nbs.database.models import User
 from bx_sch_4_nbs.database.types import UserRole
 
@@ -33,13 +32,17 @@ def create_access_token(user: User) -> str:
 
 def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
-    session: Annotated[Session, Depends(get_session)],
+    session: DatabaseSession,
 ) -> User:
     if credentials is None:
         raise CREDENTIALS_EXCEPTION
 
     try:
-        payload = jwt.decode(credentials.credentials, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        payload = jwt.decode(
+            credentials.credentials,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+        )
         user_id = int(payload["sub"])
     except (InvalidTokenError, KeyError, ValueError) as error:
         raise CREDENTIALS_EXCEPTION from error

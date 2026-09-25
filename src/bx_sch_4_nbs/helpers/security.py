@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import secrets
 
 import phonenumbers
 from cryptography.fernet import Fernet
@@ -70,3 +71,15 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, password_hash: str) -> bool:
     return password_hasher.verify(password, password_hash)
+
+
+def generate_verification_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def hash_verification_code(code: str) -> str:
+    return _hash(code)
+
+
+def verification_code_matches(code: str, code_hash: str) -> bool:
+    return hmac.compare_digest(hash_verification_code(code), code_hash)

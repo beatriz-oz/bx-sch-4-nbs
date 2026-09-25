@@ -12,3 +12,11 @@ class DuplicateResourceError(Exception):
 
 class ResourceInUseError(Exception):
     pass
+
+
+class InvalidVerificationCodeError(Exception):
+    pass
+
+
+class VerificationCodeCooldownError(Exception):
+    pass

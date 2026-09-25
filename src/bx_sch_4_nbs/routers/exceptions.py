@@ -3,7 +3,9 @@ from fastapi.responses import JSONResponse
 
 from bx_sch_4_nbs.database.exceptions import (
     DuplicateResourceError,
+    InvalidVerificationCodeError,
     ResourceDoesNotExistError,
+    VerificationCodeCooldownError,
 )
 
 
@@ -33,6 +35,32 @@ async def handle_missing_resource(
     )
 
 
+async def handle_invalid_verification_code(
+    _: Request,
+    error: Exception,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "status": "KO",
+            "detail": str(error),
+        },
+    )
+
+
+async def handle_verification_code_cooldown(
+    _: Request,
+    error: Exception,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={
+            "status": "KO",
+            "detail": str(error),
+        },
+    )
+
+
 def setup_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         DuplicateResourceError,
@@ -41,4 +69,12 @@ def setup_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         ResourceDoesNotExistError,
         handle_missing_resource,
+    )
+    app.add_exception_handler(
+        InvalidVerificationCodeError,
+        handle_invalid_verification_code,
+    )
+    app.add_exception_handler(
+        VerificationCodeCooldownError,
+        handle_verification_code_cooldown,
     )
