@@ -2,7 +2,7 @@ from typing import Literal, TypeVar
 
 from pydantic import BaseModel
 
-from bx_sch_4_nbs.routers.schemas import users
+from bx_sch_4_nbs.routers.schemas import admin, users
 
 T = TypeVar("T")
 
@@ -20,4 +20,7 @@ class BaseResponse[T](BaseModel):
     detail: T
 
 
+MessageResponse = BaseResponse[str]
 UserRegistrationResponse = BaseResponse[users.UserRegistrationResult]
+PreApprovedInstagramResponse = BaseResponse[admin.PreApprovedInstagramResult]
+PreApprovedInstagramListResponse = BaseResponse[list[admin.PreApprovedInstagramResult]]

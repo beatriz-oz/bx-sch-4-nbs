@@ -1,16 +1,17 @@
-from typing import Annotated
-
-from fastapi import Depends, FastAPI
+from fastapi import APIRouter, FastAPI
 from sqlalchemy import text
-from sqlmodel import Session
 
-from bx_sch_4_nbs.database.helpers import get_session
+from bx_sch_4_nbs.database.helpers import DatabaseSession
+from bx_sch_4_nbs.routers.admin import router as admin_router
 from bx_sch_4_nbs.routers.exceptions import setup_exception_handlers
 
 app = FastAPI(title="Nail Scheduling API")
 setup_exception_handlers(app)
 
-DatabaseSession = Annotated[Session, Depends(get_session)]
+router = APIRouter()
+router.include_router(admin_router)
+
+app.include_router(prefix="/v1", router=router)
 
 
 @app.get("/health")

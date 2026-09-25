@@ -1,5 +1,7 @@
 from collections.abc import Generator
+from typing import Annotated
 
+from fastapi import Depends
 from sqlmodel import Session, create_engine
 
 from bx_sch_4_nbs.config import settings
@@ -21,3 +23,6 @@ def get_session() -> Generator[Session]:
         raise
     finally:
         db.close()
+
+
+DatabaseSession = Annotated[Session, Depends(get_session)]
