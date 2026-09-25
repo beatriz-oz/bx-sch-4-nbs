@@ -1,7 +1,7 @@
 import hashlib
 import hmac
-import re
 
+import phonenumbers
 from cryptography.fernet import Fernet
 from pwdlib import PasswordHash
 
@@ -41,7 +41,15 @@ def decrypt_email(encrypted_email: str) -> str:
 
 
 def normalize_phone(phone: str) -> str:
-    return re.sub(r"\D", "", phone)
+    try:
+        parsed = phonenumbers.parse(phone, None)
+    except phonenumbers.NumberParseException as error:
+        raise ValueError("Invalid phone number, use the international format (e.g. +351912345678)") from error
+
+    if not phonenumbers.is_valid_number(parsed):
+        raise ValueError("Invalid phone number, use the international format (e.g. +351912345678)")
+
+    return phonenumbers.format_number(parsed, phonenumbers.PhoneNumberFormat.E164)
 
 
 def hash_phone(phone: str) -> str:

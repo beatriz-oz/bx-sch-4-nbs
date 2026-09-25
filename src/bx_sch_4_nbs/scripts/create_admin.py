@@ -5,14 +5,24 @@ from sqlmodel import Session, or_, select
 from bx_sch_4_nbs.database.helpers import engine
 from bx_sch_4_nbs.database.models import User
 from bx_sch_4_nbs.database.types import UserRole
-from bx_sch_4_nbs.helpers.security import encrypt_email, encrypt_phone, hash_email, hash_password, hash_phone
+from bx_sch_4_nbs.helpers.security import (
+    encrypt_email,
+    encrypt_phone,
+    hash_email,
+    hash_password,
+    hash_phone,
+    normalize_phone,
+)
 
 
 def main() -> None:
     name = input("Nome: ").strip()
     last_name = input("Sobrenome: ").strip()
     email = input("Email: ")
-    phone = input("Telefone: ")
+    try:
+        phone = normalize_phone(input("Telefone (com código do país, ex: +351912345678): "))
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     password = getpass("Senha: ")
 
     if len(password) < 8:
