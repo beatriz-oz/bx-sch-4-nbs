@@ -1,12 +1,14 @@
+from sqlalchemy import delete
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import Session, select
+from sqlmodel import Session, col, select
 
 from bx_sch_4_nbs.database.exceptions import DuplicateResourceError
-from bx_sch_4_nbs.database.models import User
+from bx_sch_4_nbs.database.models import User, VerificationCode
 from bx_sch_4_nbs.helpers.security import (
     encrypt_email,
     encrypt_phone,
     hash_email,
+    hash_password,
     hash_phone,
 )
 
@@ -64,3 +66,16 @@ def update_unverified_user(session: Session, user: User, *, name: str, last_name
     user.phone_hash = hash_phone(phone)
     session.add(user)
     _flush_or_raise_duplicate(session)
+
+
+def get_user_by_phone(session: Session, phone: str) -> User | None:
+    return session.exec(select(User).where(User.phone_hash == hash_phone(phone))).first()
+
+
+def activate_user(session: Session, user: User, password: str) -> None:
+    user.password_hash = hash_password(password)
+    user.is_active = True
+    user.email_verified = True
+    session.add(user)
+
+    session.exec(delete(VerificationCode).where(col(VerificationCode.user_id) == user.id))

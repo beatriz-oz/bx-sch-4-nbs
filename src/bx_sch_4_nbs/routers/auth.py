@@ -10,6 +10,8 @@ from bx_sch_4_nbs.helpers.common import mask_email
 from bx_sch_4_nbs.helpers.email import send_verification_code
 from bx_sch_4_nbs.helpers.security import decrypt_email
 from bx_sch_4_nbs.routers.schemas.auth import (
+    ActivationConfirm,
+    ActivationStart,
     CheckInStart,
     CheckInVerify,
     CodeSent,
@@ -80,5 +82,50 @@ def check_in_verify(session: DatabaseSession, data: CheckInVerify) -> TokenRespo
     verification_codes.verify_code(session, user, VerificationPurpose.CHECKIN, data.code)
     user.email_verified = True
     session.add(user)
+
+    return token_response(user)
+
+
+@router.post(
+    "/activation/start",
+    description="Start account activation for an inactive client. Sends a code to the registered email.",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Phone not registered"},
+        status.HTTP_409_CONFLICT: {"description": "Account already active"},
+        status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Code requested too recently"},
+    },
+)
+def activation_start(
+    session: DatabaseSession, data: ActivationStart, background_tasks: BackgroundTasks
+) -> CodeSentResponse:
+    user = users.get_user_by_phone(session, data.phone)
+
+    if user is None:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Phone number not found. The first booking must be made through Instagram check-in.",
+        )
+    if user.is_active:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This account is already active. Please log in.")
+
+    code = verification_codes.issue_code(session, user, VerificationPurpose.ACTIVATION)
+    email = decrypt_email(user.email_encrypted)
+    background_tasks.add_task(send_verification_code, email, code)
+
+    return CodeSentResponse(status="OK", detail=CodeSent(sent_to=mask_email(email)))
+
+
+@router.post(
+    "/activation/confirm",
+    description="Confirm the email code and set a password to become a regular client",
+    responses={status.HTTP_400_BAD_REQUEST: {"description": "Invalid or expired code"}},
+)
+def activation_confirm(session: DatabaseSession, data: ActivationConfirm) -> TokenResponse:
+    user = users.get_user_by_phone(session, data.phone)
+    if user is None or user.is_active:
+        raise InvalidVerificationCodeError("Invalid or expired code. Please request a new one.")
+
+    verification_codes.verify_code(session, user, VerificationPurpose.ACTIVATION, data.code)
+    users.activate_user(session, user, data.password)
 
     return token_response(user)

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from bx_sch_4_nbs.routers.schemas.types import InstagramHandle, PhoneNumber
+from bx_sch_4_nbs.routers.schemas.types import InstagramHandle, Password, PhoneNumber
 
 
 class CheckInStart(BaseModel):
@@ -25,3 +25,13 @@ class CodeSent(BaseModel):
 class TokenResult(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class ActivationStart(BaseModel):
+    phone: PhoneNumber
+
+
+class ActivationConfirm(BaseModel):
+    phone: PhoneNumber
+    code: str = Field(pattern=r"^\d{6}$")
+    password: Password
