@@ -2,7 +2,7 @@ from typing import Literal, TypeVar
 
 from pydantic import BaseModel
 
-from bx_sch_4_nbs.routers.schemas import admin, appointments, auth, prices
+from bx_sch_4_nbs.routers.schemas import admin, appointments, auth, prices, schedule
 
 T = TypeVar("T")
 
@@ -20,6 +20,10 @@ class BaseResponse[T](BaseModel):
     detail: T
 
 
+class BaseResponseWithWarning[T](BaseResponse[T]):
+    warning: str | None = None
+
+
 MessageResponse = BaseResponse[str]
 PreApprovedInstagramResponse = BaseResponse[admin.PreApprovedInstagramResult]
 PreApprovedInstagramListResponse = BaseResponse[list[admin.PreApprovedInstagramResult]]
@@ -32,3 +36,5 @@ PriceListResponse = BaseResponse[prices.PriceList]
 ServicePriceResponse = BaseResponse[prices.ServicePriceResult]
 NailArtPriceResponse = BaseResponse[prices.NailArtPriceResult]
 AddonPriceResponse = BaseResponse[prices.AddonPriceResult]
+ScheduleExceptionResponse = BaseResponseWithWarning[schedule.ScheduleExceptionResult]
+ScheduleExceptionListResponse = BaseResponse[list[schedule.ScheduleExceptionResult]]
