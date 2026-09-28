@@ -9,6 +9,7 @@ from bx_sch_4_nbs.config import settings
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
+    connect_args={"init_command": "SET time_zone = '+00:00'"},
 )
 
 

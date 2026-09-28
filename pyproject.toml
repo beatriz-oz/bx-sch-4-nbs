@@ -20,6 +20,7 @@ dependencies = [
     "pymysql>=1.2.0",
     "sqlalchemy>=2.0.52",
     "sqlmodel>=0.0.39",
+    "tzdata",
     "uvicorn>=0.52.3",
 ]
 
