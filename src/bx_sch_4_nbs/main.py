@@ -6,6 +6,8 @@ from bx_sch_4_nbs.routers.admin import router as admin_router
 from bx_sch_4_nbs.routers.appointments import router as appointments_router
 from bx_sch_4_nbs.routers.auth import router as auth_router
 from bx_sch_4_nbs.routers.exceptions import setup_exception_handlers
+from bx_sch_4_nbs.routers.policies import router as policies_router
+from bx_sch_4_nbs.routers.prices import router as prices_router
 
 app = FastAPI(title="Nail Scheduling API")
 app.add_middleware(
@@ -20,6 +22,8 @@ router = APIRouter()
 router.include_router(admin_router)
 router.include_router(auth_router)
 router.include_router(appointments_router)
+router.include_router(policies_router)
+router.include_router(prices_router)
 
 app.include_router(prefix="/v1", router=router)
 

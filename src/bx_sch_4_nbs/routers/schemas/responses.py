@@ -2,7 +2,7 @@ from typing import Literal, TypeVar
 
 from pydantic import BaseModel
 
-from bx_sch_4_nbs.routers.schemas import admin, appointments, auth
+from bx_sch_4_nbs.routers.schemas import admin, appointments, auth, prices
 
 T = TypeVar("T")
 
@@ -27,3 +27,8 @@ CodeSentResponse = BaseResponse[auth.CodeSent]
 TokenResponse = BaseResponse[auth.TokenResult]
 UserResponse = BaseResponse[auth.UserResult]
 AvailabilityResponse = BaseResponse[list[appointments.AvailableDay]]
+PolicyResponse = BaseResponse[admin.PolicyResult]
+PriceListResponse = BaseResponse[prices.PriceList]
+ServicePriceResponse = BaseResponse[prices.ServicePriceResult]
+NailArtPriceResponse = BaseResponse[prices.NailArtPriceResult]
+AddonPriceResponse = BaseResponse[prices.AddonPriceResult]
