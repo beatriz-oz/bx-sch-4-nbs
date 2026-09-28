@@ -42,3 +42,10 @@ class NailArtLevel(str, Enum):
 class Addon(str, Enum):
     BROKEN_NAIL = "Broken nail"
     EXTRA_CHARM = "Extra charm"
+
+
+class CancellationReason(str, Enum):
+    CLIENT_EARLY = "Cancelled by the client, more than 48h before"
+    CLIENT_LATE = "Cancelled by the client, less than 48h before"
+    NOT_CONFIRMED = "Attendance not confirmed in time"
+    BY_STUDIO = "Cancelled by the studio"

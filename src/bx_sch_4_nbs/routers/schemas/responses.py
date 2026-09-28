@@ -41,3 +41,5 @@ ScheduleExceptionListResponse = BaseResponse[list[schedule.ScheduleExceptionResu
 MonthPublishedResponse = BaseResponse[schedule.MonthPublished]
 PublishedMonthListResponse = BaseResponse[list[schedule.PublishedMonthResult]]
 AvailabilityPreviewResponse = BaseResponse[appointments.AvailabilityPreview]
+EstimateResponse = BaseResponse[appointments.EstimateResult]
+NewAppointmentResponse = BaseResponse[appointments.BookingResult]

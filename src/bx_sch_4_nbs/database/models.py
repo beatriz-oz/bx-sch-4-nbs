@@ -7,6 +7,7 @@ from sqlmodel import Field, SQLModel
 from bx_sch_4_nbs.database.types import (
     Addon,
     AppointmentStatus,
+    CancellationReason,
     NailArtLevel,
     NailSize,
     Service,
@@ -107,10 +108,16 @@ class Appointment(SQLModel, table=True):
     nail_size: NailSize | None = Field(default=None, nullable=True)
     nail_art_level: NailArtLevel | None = Field(default=None, nullable=True)
     broken_nails: int = Field(default=0, nullable=False)
+    has_other_professional_nails: bool = Field(default=False, nullable=False)
     estimated_price: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
     final_price: Decimal | None = Field(default=None, sa_column=Column(Numeric(10, 2), nullable=True))
     policy_id: int = Field(foreign_key="policies.id", nullable=False, ondelete="RESTRICT")
     policies_accepted_at: datetime = Field(nullable=False)
+    deposit_paid_at: datetime | None = Field(default=None, nullable=True)
+    attendance_confirmed_at: datetime | None = Field(default=None, nullable=True)
+    reminder_sent_at: datetime | None = Field(default=None, nullable=True)
+    cancelled_at: datetime | None = Field(default=None, nullable=True)
+    cancellation_reason: CancellationReason | None = Field(default=None, nullable=True)
     notes: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     created_at: datetime | None = Field(
         default=None,

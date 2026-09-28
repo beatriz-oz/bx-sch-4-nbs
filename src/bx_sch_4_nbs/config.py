@@ -18,12 +18,14 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_use_tls: bool = False
     email_from: str = "Nails by Scooby <no-reply@nailsbyscooby.com>"
+    studio_notification_email: str = "studio@nailsbyscooby.local"
     cors_origins: list[str] = ["http://localhost:4200"]
     appointments_timezone: str = "Europe/Lisbon"
     appointment_slots: list[time] = [time(10, 0), time(14, 0), time(17, 0)]
     open_weekdays: list[int] = [1, 2, 3, 4]
     restricted_nail_sizes: list[NailSize] = [NailSize.XLARGE, NailSize.XXLARGE]
     restricted_size_slots: list[time] = [time(10, 0), time(17, 0)]
+    maintenance_max_days: int = 35
 
     model_config = SettingsConfigDict(env_file=".env")
 

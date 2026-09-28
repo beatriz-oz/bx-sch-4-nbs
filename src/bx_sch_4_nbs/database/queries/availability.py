@@ -6,7 +6,7 @@ from sqlmodel import Session, col, select
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.models import BookedSlot, PublishedMonth, ScheduleException
 from bx_sch_4_nbs.database.types import NailSize
-from bx_sch_4_nbs.helpers.common import to_utc, utc_now
+from bx_sch_4_nbs.helpers.common import to_studio_time, to_utc, utc_now
 
 MONDAY = 0
 
@@ -79,3 +79,8 @@ def is_slot_allowed_for_size(slot_time: time, nail_size: NailSize | None) -> boo
     if nail_size in settings.restricted_nail_sizes:
         return slot_time in settings.restricted_size_slots
     return True
+
+
+def is_slot_available(session: Session, slot_at: datetime, nail_size: NailSize | None) -> bool:
+    studio_time = to_studio_time(slot_at)
+    return slot_at in available_slots(session, studio_time.year, studio_time.month, nail_size)

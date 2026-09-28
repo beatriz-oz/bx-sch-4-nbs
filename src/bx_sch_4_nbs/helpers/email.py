@@ -61,3 +61,17 @@ def send_agenda_published(recipients: list[str], year: int, month: int) -> None:
     send_emails(
         [_build_message(to, f"The agenda for {month_name} is open! - Nails by Scooby", body) for to in recipients]
     )
+
+
+def send_new_appointment_notification(
+    to: str, client_instagram: str, client_name: str, when: str, details: str
+) -> None:
+    send_email(
+        to=to,
+        subject=f"New appointment: {when} - deposit pending",
+        body=(
+            f"New appointment from @{client_instagram if client_instagram else 'Unknown'} - {client_name} on {when} (Lisbon time).\n\n"
+            f"{details}\n\n"
+            "Status: waiting for the deposit."
+        ),
+    )
