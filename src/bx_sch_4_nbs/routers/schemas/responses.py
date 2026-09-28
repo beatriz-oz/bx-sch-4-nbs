@@ -2,7 +2,7 @@ from typing import Literal, TypeVar
 
 from pydantic import BaseModel
 
-from bx_sch_4_nbs.routers.schemas import admin, auth
+from bx_sch_4_nbs.routers.schemas import admin, appointments, auth
 
 T = TypeVar("T")
 
@@ -26,3 +26,4 @@ PreApprovedInstagramListResponse = BaseResponse[list[admin.PreApprovedInstagramR
 CodeSentResponse = BaseResponse[auth.CodeSent]
 TokenResponse = BaseResponse[auth.TokenResult]
 UserResponse = BaseResponse[auth.UserResult]
+AvailabilityResponse = BaseResponse[list[appointments.AvailableDay]]
