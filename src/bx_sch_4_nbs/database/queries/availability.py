@@ -37,8 +37,14 @@ def get_booked_slots(session: Session, start: datetime, end: datetime) -> set[da
     return set(rows)
 
 
-def available_slots(session: Session, year: int, month: int, nail_size: NailSize | None = None) -> list[datetime]:
-    if not is_month_published(session, year, month):
+def available_slots(
+    session: Session,
+    year: int,
+    month: int,
+    nail_size: NailSize | None = None,
+    require_published: bool = True,
+) -> list[datetime]:
+    if require_published and not is_month_published(session, year, month):
         return []
 
     days_in_month = calendar.monthrange(year, month)[1]

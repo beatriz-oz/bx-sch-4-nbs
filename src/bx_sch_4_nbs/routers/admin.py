@@ -2,18 +2,29 @@ import calendar
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 
 from bx_sch_4_nbs.database.helpers import DatabaseSession
 from bx_sch_4_nbs.database.queries import approved_list as queries
-from bx_sch_4_nbs.database.queries import policies, prices, schedule
+from bx_sch_4_nbs.database.queries import (
+    availability,
+    policies,
+    prices,
+    published_months,
+    schedule,
+    users,
+)
+from bx_sch_4_nbs.database.types import NailSize
 from bx_sch_4_nbs.helpers.authentication import get_current_admin
+from bx_sch_4_nbs.helpers.email import send_agenda_published
+from bx_sch_4_nbs.helpers.security import decrypt_email
 from bx_sch_4_nbs.routers.schemas.admin import (
     NewPolicy,
     NewPreApprovedInstagram,
     PolicyResult,
     PreApprovedInstagramResult,
 )
+from bx_sch_4_nbs.routers.schemas.appointments import AvailabilityPreview, AvailableDay
 from bx_sch_4_nbs.routers.schemas.prices import (
     AddonPriceResult,
     AddonPriceUpdate,
@@ -24,16 +35,22 @@ from bx_sch_4_nbs.routers.schemas.prices import (
 )
 from bx_sch_4_nbs.routers.schemas.responses import (
     AddonPriceResponse,
+    AvailabilityPreviewResponse,
     MessageResponse,
+    MonthPublishedResponse,
     NailArtPriceResponse,
     PolicyResponse,
     PreApprovedInstagramListResponse,
     PreApprovedInstagramResponse,
+    PublishedMonthListResponse,
     ScheduleExceptionListResponse,
     ScheduleExceptionResponse,
     ServicePriceResponse,
 )
 from bx_sch_4_nbs.routers.schemas.schedule import (
+    MonthPublish,
+    MonthPublished,
+    PublishedMonthResult,
     ScheduleExceptionResult,
     ScheduleExceptionSet,
 )
@@ -162,3 +179,60 @@ def set_schedule_exception(session: DatabaseSession, data: ScheduleExceptionSet)
 def remove_schedule_exception(session: DatabaseSession, exception_id: int) -> MessageResponse:
     schedule.delete_exception(session, exception_id)
     return MessageResponse(status="OK", detail="Schedule exception removed")
+
+
+@router.get("/published-months", description="Published months, most recent first")
+def get_published_months(session: DatabaseSession) -> PublishedMonthListResponse:
+    entries = published_months.list_published_months(session)
+    return PublishedMonthListResponse(
+        status="OK",
+        detail=[PublishedMonthResult.model_validate(entry) for entry in entries],
+    )
+
+
+@router.post(
+    "/published-months",
+    description="Publish a month's agenda and notify the regular clients by email",
+    status_code=status.HTTP_201_CREATED,
+    responses={status.HTTP_409_CONFLICT: {"description": "Month already published"}},
+)
+def publish_month(
+    session: DatabaseSession, data: MonthPublish, background_tasks: BackgroundTasks
+) -> MonthPublishedResponse:
+    entry = published_months.publish_month(session, data.year, data.month)
+
+    if entry.published_at is None:
+        raise RuntimeError("published_at should have been set by the database.")
+
+    recipients = [decrypt_email(user.email_encrypted) for user in users.list_agenda_subscribers(session)]
+    background_tasks.add_task(send_agenda_published, recipients, data.year, data.month)
+
+    return MonthPublishedResponse(
+        status="OK",
+        detail=MonthPublished(
+            year=entry.year,
+            month=entry.month,
+            published_at=entry.published_at,
+            notified_clients=len(recipients),
+        ),
+    )
+
+
+@router.get(
+    "/availability-preview",
+    description="What clients will see for a month, even before it is published",
+)
+def get_availability_preview(
+    session: DatabaseSession,
+    year: Annotated[int, Query(ge=2026, le=2100)],
+    month: Annotated[int, Query(ge=1, le=12)],
+    nail_size: NailSize | None = None,
+) -> AvailabilityPreviewResponse:
+    slots = availability.available_slots(session, year, month, nail_size, require_published=False)
+    return AvailabilityPreviewResponse(
+        status="OK",
+        detail=AvailabilityPreview(
+            is_published=availability.is_month_published(session, year, month),
+            days=AvailableDay.from_utc_slots(slots),
+        ),
+    )

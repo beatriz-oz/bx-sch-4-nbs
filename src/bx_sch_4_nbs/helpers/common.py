@@ -28,8 +28,10 @@ def mask_email(email: str) -> str:
     return f"{local[0]}***@{domain}"
 
 
-def to_studio_time(utc_value: datetime) -> datetime:
-    return utc_value.replace(tzinfo=UTC).astimezone(APPOINTMENTS_TZ)
+def to_studio_time(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(APPOINTMENTS_TZ)
 
 
 def to_utc(value: datetime) -> datetime:

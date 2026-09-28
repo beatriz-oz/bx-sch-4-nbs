@@ -4,6 +4,7 @@ from sqlmodel import Session, col, select
 
 from bx_sch_4_nbs.database.exceptions import DuplicateResourceError
 from bx_sch_4_nbs.database.models import User, VerificationCode
+from bx_sch_4_nbs.database.types import UserRole
 from bx_sch_4_nbs.helpers.security import (
     encrypt_email,
     encrypt_phone,
@@ -79,3 +80,16 @@ def activate_user(session: Session, user: User, password: str) -> None:
     session.add(user)
 
     session.exec(delete(VerificationCode).where(col(VerificationCode.user_id) == user.id))
+
+
+def list_agenda_subscribers(session: Session) -> list[User]:
+    return list(
+        session.exec(
+            select(User).where(
+                User.role == UserRole.USER,
+                col(User.is_active).is_(True),
+                col(User.email_verified).is_(True),
+                col(User.wants_agenda_emails).is_(True),
+            )
+        ).all()
+    )
