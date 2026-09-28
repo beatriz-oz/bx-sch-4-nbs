@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_use_tls: bool = False
     email_from: str = "Nails by Scooby <no-reply@nailsbyscooby.com>"
+    cors_origins: list[str] = ["http://localhost:4200"]
 
     model_config = SettingsConfigDict(env_file=".env")
 
