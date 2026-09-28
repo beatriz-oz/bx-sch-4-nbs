@@ -10,7 +10,6 @@ class Service(str, Enum):
     APPLICATION = "Application"
     MAINTENANCE = "Maintenance"
     REMOVAL = "Removal"
-    REMOVAL_MANICURE = "Removal and Manicure"
 
 
 class NailSize(str, Enum):
@@ -32,3 +31,14 @@ class AppointmentStatus(str, Enum):
 class VerificationPurpose(str, Enum):
     CHECKIN = "Checkin"
     ACTIVATION = "Activation"
+
+
+class NailArtLevel(str, Enum):
+    LEVEL_1 = "Level 1"
+    LEVEL_2 = "Level 2"
+    LEVEL_3 = "Level 3"
+
+
+class Addon(str, Enum):
+    BROKEN_NAIL = "Broken nail"
+    EXTRA_CHARM = "Extra charm"

@@ -1,10 +1,18 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from sqlalchemy import Column, DateTime, Numeric, Text, UniqueConstraint, func
 from sqlmodel import Field, SQLModel
 
-from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize, Service, UserRole, VerificationPurpose
+from bx_sch_4_nbs.database.types import (
+    Addon,
+    AppointmentStatus,
+    NailArtLevel,
+    NailSize,
+    Service,
+    UserRole,
+    VerificationPurpose,
+)
 
 
 class User(SQLModel, table=True):
@@ -26,11 +34,15 @@ class User(SQLModel, table=True):
     last_name: str = Field(description="Last name", max_length=255, nullable=False)
     email_encrypted: str = Field(description="Email encrypted with Fernet", max_length=512, nullable=False)
     email_hash: str = Field(
-        description="Deterministic hash of the email, used for lookup", max_length=64, nullable=False
+        description="Deterministic hash of the email, used for lookup",
+        max_length=64,
+        nullable=False,
     )
     phone_encrypted: str = Field(description="Phone encrypted with Fernet", max_length=512, nullable=False)
     phone_hash: str = Field(
-        description="Deterministic hash of the phone, used for lookup", max_length=64, nullable=False
+        description="Deterministic hash of the phone, used for lookup",
+        max_length=64,
+        nullable=False,
     )
     role: UserRole = Field(description="User or super admin", default=UserRole.USER, nullable=False)
     password_hash: str | None = Field(
@@ -39,9 +51,15 @@ class User(SQLModel, table=True):
         max_length=255,
         nullable=True,
     )
-    is_active: bool = Field(description="True for regular clients (with password)", default=False, nullable=False)
+    is_active: bool = Field(
+        description="True for regular clients (with password)",
+        default=False,
+        nullable=False,
+    )
     email_verified: bool = Field(
-        description="True after the client confirms the email code", default=False, nullable=False
+        description="True after the client confirms the email code",
+        default=False,
+        nullable=False,
     )
     created_at: datetime | None = Field(
         description="Timestamp of when the record was created",
@@ -52,8 +70,16 @@ class User(SQLModel, table=True):
         description="Timestamp of when the record was last updated",
         default=None,
         sa_column=Column(
-            DateTime, nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+            DateTime,
+            nullable=False,
+            server_default=func.current_timestamp(),
+            onupdate=func.current_timestamp(),
         ),
+    )
+    wants_agenda_emails: bool = Field(
+        description="False when the client unsubscribes from agenda notifications",
+        default=True,
+        nullable=False,
     )
 
 
@@ -72,26 +98,31 @@ class PreApprovedInstagram(SQLModel, table=True):
 
 class Appointment(SQLModel, table=True):
     __tablename__ = "appointments"
-    __table_args__ = (UniqueConstraint("scheduled_at", name="uc_appointments_schedule_at"),)
 
     id: int | None = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="users.id", nullable=False, ondelete="RESTRICT")
-    scheduled_at: datetime = Field(nullable=False)
-    is_deposit_paid: bool = Field(default=False, nullable=False)
-    status: AppointmentStatus = Field(nullable=False, default=AppointmentStatus.SCHEDULED)
+    scheduled_at: datetime = Field(description="Start of the appointment, in UTC", nullable=False, index=True)
+    status: AppointmentStatus = Field(default=AppointmentStatus.SCHEDULED, nullable=False)
     service: Service = Field(nullable=False)
-    nail_size: NailSize | None = Field(nullable=True)
-    final_price: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
-    notes: str | None = Field(sa_column=Column(Text, nullable=True, default=None))
+    nail_size: NailSize | None = Field(default=None, nullable=True)
+    nail_art_level: NailArtLevel | None = Field(default=None, nullable=True)
+    broken_nails: int = Field(default=0, nullable=False)
+    estimated_price: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
+    final_price: Decimal | None = Field(default=None, sa_column=Column(Numeric(10, 2), nullable=True))
+    policy_id: int = Field(foreign_key="policies.id", nullable=False, ondelete="RESTRICT")
+    policies_accepted_at: datetime = Field(nullable=False)
+    notes: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     created_at: datetime | None = Field(
-        description="Timestamp of when the record was created",
         default=None,
         sa_column=Column(DateTime, nullable=False, server_default=func.current_timestamp()),
     )
     updated_at: datetime | None = Field(
         default=None,
         sa_column=Column(
-            DateTime, nullable=False, server_default=func.current_timestamp(), onupdate=func.current_timestamp()
+            DateTime,
+            nullable=False,
+            server_default=func.current_timestamp(),
+            onupdate=func.current_timestamp(),
         ),
     )
 
@@ -117,3 +148,97 @@ class VerificationCode(SQLModel, table=True):
     attempts: int = Field(default=0, nullable=False)
     sent_at: datetime = Field(nullable=False)
     expires_at: datetime = Field(nullable=False)
+
+
+class ServicePrice(SQLModel, table=True):
+    __tablename__ = "service_prices"
+    __table_args__ = (UniqueConstraint("service", "nail_size", name="uc_service_prices_service_size"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    service: Service = Field(nullable=False)
+    nail_size: NailSize | None = Field(default=None, nullable=True)
+    amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime,
+            nullable=False,
+            server_default=func.current_timestamp(),
+            onupdate=func.current_timestamp(),
+        ),
+    )
+
+
+class NailArtPrice(SQLModel, table=True):
+    __tablename__ = "nail_art_prices"
+
+    nail_art_level: NailArtLevel = Field(primary_key=True)
+    amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime,
+            nullable=False,
+            server_default=func.current_timestamp(),
+            onupdate=func.current_timestamp(),
+        ),
+    )
+
+
+class AddonPrice(SQLModel, table=True):
+    __tablename__ = "addon_prices"
+
+    addon: Addon = Field(primary_key=True)
+    amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
+    updated_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            DateTime,
+            nullable=False,
+            server_default=func.current_timestamp(),
+            onupdate=func.current_timestamp(),
+        ),
+    )
+
+
+class Policy(SQLModel, table=True):
+    __tablename__ = "policies"
+    __table_args__ = (UniqueConstraint("version", name="uc_policies_version"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    version: str = Field(max_length=20, nullable=False)
+    content: str = Field(sa_column=Column(Text, nullable=False))
+    published_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
+
+
+class BookedSlot(SQLModel, table=True):
+    __tablename__ = "booked_slots"
+
+    slot_at: datetime = Field(description="Occupied slot start, in UTC", primary_key=True)
+    appointment_id: int = Field(foreign_key="appointments.id", nullable=False, ondelete="CASCADE", index=True)
+
+
+class ScheduleException(SQLModel, table=True):
+    __tablename__ = "schedule_exceptions"
+    __table_args__ = (UniqueConstraint("day", "slot_time", name="uc_schedule_exceptions_day_slot"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    day: date = Field(description="Salon local date", nullable=False, index=True)
+    slot_time: time | None = Field(
+        description="Salon local time; empty means the whole day", default=None, nullable=True
+    )
+    is_open: bool = Field(nullable=False)
+
+
+class PublishedMonth(SQLModel, table=True):
+    __tablename__ = "published_months"
+
+    year: int = Field(primary_key=True)
+    month: int = Field(primary_key=True)
+    published_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime, nullable=False, server_default=func.current_timestamp()),
+    )

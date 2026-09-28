@@ -1,3 +1,5 @@
+from datetime import time
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,6 +18,8 @@ class Settings(BaseSettings):
     email_from: str = "Nails by Scooby <no-reply@nailsbyscooby.com>"
     cors_origins: list[str] = ["http://localhost:4200"]
     appointments_timezone: str = "Europe/Lisbon"
+    appointment_slots: list[time] = [time(10, 0), time(14, 0), time(17, 0)]
+    open_weekdays: list[int] = [1, 2, 3, 4]
 
     model_config = SettingsConfigDict(env_file=".env")
 
