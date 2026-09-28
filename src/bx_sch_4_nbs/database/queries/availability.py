@@ -5,6 +5,7 @@ from sqlmodel import Session, col, select
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.models import BookedSlot, PublishedMonth, ScheduleException
+from bx_sch_4_nbs.database.types import NailSize
 from bx_sch_4_nbs.helpers.common import to_utc, utc_now
 
 MONDAY = 0
@@ -36,7 +37,7 @@ def get_booked_slots(session: Session, start: datetime, end: datetime) -> set[da
     return set(rows)
 
 
-def available_slots(session: Session, year: int, month: int) -> list[datetime]:
+def available_slots(session: Session, year: int, month: int, nail_size: NailSize | None = None) -> list[datetime]:
     if not is_month_published(session, year, month):
         return []
 
@@ -58,9 +59,17 @@ def available_slots(session: Session, year: int, month: int) -> list[datetime]:
         for slot_time in settings.appointment_slots:
             if not is_open_for_clients(day, slot_time, exceptions):
                 continue
+            if not is_slot_allowed_for_size(slot_time, nail_size):
+                continue
             slot_at = to_utc(datetime.combine(day, slot_time))
             if slot_at in booked or slot_at <= now:
                 continue
             result.append(slot_at)
 
     return result
+
+
+def is_slot_allowed_for_size(slot_time: time, nail_size: NailSize | None) -> bool:
+    if nail_size in settings.restricted_nail_sizes:
+        return slot_time in settings.restricted_size_slots
+    return True

@@ -2,6 +2,8 @@ from datetime import time
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from bx_sch_4_nbs.database.types import NailSize
+
 
 class Settings(BaseSettings):
     database_url: str
@@ -20,6 +22,8 @@ class Settings(BaseSettings):
     appointments_timezone: str = "Europe/Lisbon"
     appointment_slots: list[time] = [time(10, 0), time(14, 0), time(17, 0)]
     open_weekdays: list[int] = [1, 2, 3, 4]
+    restricted_nail_sizes: list[NailSize] = [NailSize.XLARGE, NailSize.XXLARGE]
+    restricted_size_slots: list[time] = [time(10, 0), time(17, 0)]
 
     model_config = SettingsConfigDict(env_file=".env")
 
