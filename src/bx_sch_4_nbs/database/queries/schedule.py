@@ -1,14 +1,27 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, func, select
 
 from bx_sch_4_nbs.config import settings
-from bx_sch_4_nbs.database.exceptions import DuplicateResourceError, ResourceDoesNotExistError
+from bx_sch_4_nbs.database.exceptions import (
+    CancellationNotAllowedError,
+    DuplicateResourceError,
+    ResourceDoesNotExistError,
+)
 from bx_sch_4_nbs.database.models import Appointment, BookedSlot, ScheduleException
-from bx_sch_4_nbs.database.types import AppointmentStatus, NailArtLevel, NailSize, Service
+from bx_sch_4_nbs.database.types import (
+    AppointmentStatus,
+    CancellationReason,
+    NailArtLevel,
+    NailSize,
+    Service,
+)
 from bx_sch_4_nbs.helpers.common import to_utc, utc_now
+
+ACTIVE_STATUSES = (AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED)
+REFUNDABLE_REASONS = (CancellationReason.CLIENT_EARLY, CancellationReason.BY_STUDIO)
 
 
 def list_exceptions(session: Session, first_day: date, last_day: date) -> list[ScheduleException]:
@@ -47,6 +60,46 @@ def count_booked_slots(session: Session, day: date, slot_time: time | None) -> i
     slot_times = [slot_time] if slot_time is not None else settings.appointment_slots
     instants = [to_utc(datetime.combine(day, t)) for t in slot_times]
     return session.exec(select(func.count()).select_from(BookedSlot).where(col(BookedSlot.slot_at).in_(instants))).one()
+
+
+def is_refund_due(appointment: Appointment) -> bool:
+    return appointment.deposit_paid_at is not None and appointment.cancellation_reason in REFUNDABLE_REASONS
+
+
+def cancel_appointment(session: Session, appointment_id: int, user_id: int, accept_deposit_loss: bool) -> Appointment:
+    appointment = session.get(Appointment, appointment_id)
+
+    if appointment is None or appointment.user_id != user_id:
+        raise ResourceDoesNotExistError(f"Appointment {appointment_id} does not exist.")
+
+    if appointment.status not in ACTIVE_STATUSES:
+        raise CancellationNotAllowedError("Only scheduled or confirmed appointments can be cancelled.")
+
+    now = utc_now()
+    if appointment.scheduled_at <= now:
+        raise CancellationNotAllowedError("This appointment has already started and cannot be cancelled.")
+
+    is_early = appointment.scheduled_at - now > timedelta(hours=settings.free_cancellation_hours)
+    reason = CancellationReason.CLIENT_EARLY if is_early else CancellationReason.CLIENT_LATE
+
+    if reason == CancellationReason.CLIENT_LATE and not accept_deposit_loss:
+        raise CancellationNotAllowedError(
+            f"Cancelling less than {settings.free_cancellation_hours} hours before the appointment means "
+            "the deposit will not be refunded. Send accept_deposit_loss: true to confirm."
+        )
+
+    appointment.status = AppointmentStatus.CANCELLED
+    appointment.cancelled_at = now
+    appointment.cancelled_by = user_id
+    appointment.cancellation_reason = reason
+    session.add(appointment)
+
+    booked_slot = session.get(BookedSlot, appointment.scheduled_at)
+    if booked_slot is not None:
+        session.delete(booked_slot)
+
+    session.flush()
+    return appointment
 
 
 def create_appointment(

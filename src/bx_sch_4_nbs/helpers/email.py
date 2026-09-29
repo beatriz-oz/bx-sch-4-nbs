@@ -64,14 +64,57 @@ def send_agenda_published(recipients: list[str], year: int, month: int) -> None:
 
 
 def send_new_appointment_notification(
-    to: str, client_instagram: str, client_name: str, when: str, details: str
+    to: str, client_instagram: str | None, client_name: str, when: str, details: str
 ) -> None:
+    instagram_label = f"@{client_instagram}" if client_instagram else "no Instagram"
     send_email(
         to=to,
         subject=f"New appointment: {when} - deposit pending",
         body=(
-            f"New appointment from @{client_instagram if client_instagram else 'Unknown'} - {client_name} on {when} (Lisbon time).\n\n"
+            f"New appointment from {instagram_label} - {client_name} on {when} (Lisbon time).\n\n"
             f"{details}\n\n"
             "Status: waiting for the deposit."
+        ),
+    )
+
+
+def send_cancelled_appointment_notification(
+    to: str, client_instagram: str | None, client_name: str, when: str, deposit_paid: bool, refund_due: bool
+) -> None:
+    instagram_label = f"@{client_instagram}" if client_instagram else "no Instagram"
+
+    if refund_due:
+        subject = f"CANCELLED: ACTION REQUIRED - {when}"
+        deposit_line = "The deposit was paid and must be refunded. Please contact the client to arrange the refund."
+    elif not deposit_paid:
+        subject = f"CANCELLED - {when}"
+        deposit_line = "The deposit had not been paid, so there is nothing to refund."
+    else:
+        subject = f"CANCELLED - {when}"
+        deposit_line = "The appointment was cancelled less than 48 hours before, so the deposit is not refunded."
+
+    send_email(
+        to=to,
+        subject=subject,
+        body=(f"Appointment cancelled by {instagram_label} - {client_name} on {when} (Lisbon time).\n\n{deposit_line}"),
+    )
+
+
+def send_cancelled_appointment_notification_client(to: str, when: str, deposit_paid: bool, refund_due: bool) -> None:
+    if refund_due:
+        deposit_line = "Your deposit will be refunded. The studio will contact you to arrange it."
+    elif not deposit_paid:
+        deposit_line = "No deposit had been paid for this appointment."
+    else:
+        deposit_line = "As stated in the booking policies, the deposit is not refunded for cancellations made less than 48 hours before."
+
+    send_email(
+        to=to,
+        subject="Your appointment has been cancelled - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            f"Your appointment on {when} (Lisbon time) has been cancelled.\n"
+            f"{deposit_line}\n\n"
+            "If you did not cancel this appointment, please contact the studio immediately."
         ),
     )

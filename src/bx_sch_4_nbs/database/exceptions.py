@@ -20,3 +20,7 @@ class InvalidVerificationCodeError(Exception):
 
 class VerificationCodeCooldownError(Exception):
     pass
+
+
+class CancellationNotAllowedError(Exception):
+    pass

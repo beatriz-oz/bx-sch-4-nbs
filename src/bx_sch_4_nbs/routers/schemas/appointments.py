@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from bx_sch_4_nbs.database.types import AppointmentStatus, NailArtLevel, NailSize, Service
+from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, NailArtLevel, NailSize, Service
 from bx_sch_4_nbs.helpers.common import to_studio_time
 from bx_sch_4_nbs.routers.schemas.types import StudioDatetime, UtcDatetime
 
@@ -81,9 +81,23 @@ class AppointmentResult(BaseModel):
     has_other_professional_nails: bool
     estimated_price: Decimal
     policies_accepted_at: StudioDatetime
+    deposit_paid_at: StudioDatetime | None
+    attendance_confirmed_at: StudioDatetime | None
+    cancelled_at: StudioDatetime | None
+    cancelled_by: int | None
+    cancellation_reason: CancellationReason | None
 
 
 class BookingResult(BaseModel):
     appointment: AppointmentResult
     possible_extras: list[PossibleExtraResult]
     note: str | None
+
+
+class CancellationRequest(BaseModel):
+    accept_deposit_loss: bool = False
+
+
+class CancellationResult(BaseModel):
+    appointment: AppointmentResult
+    deposit_refund_due: bool

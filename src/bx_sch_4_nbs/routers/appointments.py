@@ -9,18 +9,26 @@ from bx_sch_4_nbs.database.queries import availability, policies, prices, schedu
 from bx_sch_4_nbs.database.types import NailSize
 from bx_sch_4_nbs.helpers.authentication import CurrentUser
 from bx_sch_4_nbs.helpers.common import to_studio_time
-from bx_sch_4_nbs.helpers.email import send_new_appointment_notification
+from bx_sch_4_nbs.helpers.email import (
+    send_cancelled_appointment_notification,
+    send_cancelled_appointment_notification_client,
+    send_new_appointment_notification,
+)
+from bx_sch_4_nbs.helpers.security import decrypt_email
 from bx_sch_4_nbs.routers.schemas.appointments import (
     AppointmentDetails,
     AppointmentResult,
     AvailableDay,
     BookingResult,
+    CancellationRequest,
+    CancellationResult,
     EstimateResult,
     NewAppointment,
     PossibleExtraResult,
 )
 from bx_sch_4_nbs.routers.schemas.responses import (
     AvailabilityResponse,
+    CancellationResponse,
     EstimateResponse,
     NewAppointmentResponse,
 )
@@ -73,6 +81,57 @@ def estimate(session: DatabaseSession, user: CurrentUser, data: AppointmentDetai
         has_other_professional_nails=data.has_other_professional_nails,
     )
     return EstimateResponse(status="OK", detail=EstimateResult.model_validate(result))
+
+
+@router.post(
+    "/{appointment_id}/cancel",
+    description="Cancel one of your appointments. Within 48h, accept_deposit_loss must be true.",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Appointment not found"},
+        status.HTTP_409_CONFLICT: {"description": "Not cancellable, or deposit loss not accepted"},
+    },
+)
+def cancel_appointment(
+    session: DatabaseSession,
+    user: CurrentUser,
+    appointment_id: int,
+    background_tasks: BackgroundTasks,
+    data: CancellationRequest | None = None,
+) -> CancellationResponse:
+    if user.id is None:
+        raise RuntimeError("Authenticated user without id.")
+
+    accept_deposit_loss = data.accept_deposit_loss if data is not None else False
+    appointment = schedule.cancel_appointment(session, appointment_id, user.id, accept_deposit_loss)
+
+    refund_due = schedule.is_refund_due(appointment)
+    deposit_paid = appointment.deposit_paid_at is not None
+    when = to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M")
+
+    background_tasks.add_task(
+        send_cancelled_appointment_notification_client,
+        decrypt_email(user.email_encrypted),
+        when,
+        deposit_paid,
+        refund_due,
+    )
+    background_tasks.add_task(
+        send_cancelled_appointment_notification,
+        settings.studio_notification_email,
+        user.instagram,
+        f"{user.name} {user.last_name}",
+        when,
+        deposit_paid,
+        refund_due,
+    )
+
+    return CancellationResponse(
+        status="OK",
+        detail=CancellationResult(
+            appointment=AppointmentResult.model_validate(appointment),
+            deposit_refund_due=refund_due,
+        ),
+    )
 
 
 @router.post(
@@ -132,7 +191,7 @@ def create_new_appointment(
     background_tasks.add_task(
         send_new_appointment_notification,
         settings.studio_notification_email,
-        f"{user.instagram}",
+        user.instagram,
         f"{user.name} {user.last_name}",
         to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
         _booking_details(appointment),

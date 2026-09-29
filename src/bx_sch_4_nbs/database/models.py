@@ -117,6 +117,7 @@ class Appointment(SQLModel, table=True):
     attendance_confirmed_at: datetime | None = Field(default=None, nullable=True)
     reminder_sent_at: datetime | None = Field(default=None, nullable=True)
     cancelled_at: datetime | None = Field(default=None, nullable=True)
+    cancelled_by: int | None = Field(foreign_key="users.id", default=None, nullable=True, ondelete="SET NULL")
     cancellation_reason: CancellationReason | None = Field(default=None, nullable=True)
     notes: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     created_at: datetime | None = Field(

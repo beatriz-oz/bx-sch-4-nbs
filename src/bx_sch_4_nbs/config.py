@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     restricted_nail_sizes: list[NailSize] = [NailSize.XLARGE, NailSize.XXLARGE]
     restricted_size_slots: list[time] = [time(10, 0), time(17, 0)]
     maintenance_max_days: int = 35
+    free_cancellation_hours: int = 48
 
     model_config = SettingsConfigDict(env_file=".env")
 
