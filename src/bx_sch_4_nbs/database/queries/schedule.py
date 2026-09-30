@@ -6,6 +6,7 @@ from sqlmodel import Session, col, func, select
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.exceptions import (
+    AppointmentNotActiveError,
     CancellationNotAllowedError,
     DuplicateResourceError,
     ResourceDoesNotExistError,
@@ -20,7 +21,10 @@ from bx_sch_4_nbs.database.types import (
 )
 from bx_sch_4_nbs.helpers.common import to_utc, utc_now
 
-ACTIVE_STATUSES = (AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED)
+ACTIVE_STATUSES = (
+    AppointmentStatus.SCHEDULED,
+    AppointmentStatus.CONFIRMED,
+)
 REFUNDABLE_REASONS = (CancellationReason.CLIENT_EARLY, CancellationReason.BY_STUDIO)
 
 
@@ -139,5 +143,58 @@ def create_appointment(
         session.flush()
     except IntegrityError as error:
         raise DuplicateResourceError("This slot has just been booked. Please choose another one.") from error
+
+    return appointment
+
+
+def appointments_needing_reminder(session: Session, now: datetime) -> list[Appointment]:
+
+    appointments = list(
+        session.exec(
+            select(Appointment).where(
+                col(Appointment.status).in_(ACTIVE_STATUSES),
+                col(Appointment.reminder_sent_at).is_(None),
+                col(Appointment.scheduled_at) > now,
+                col(Appointment.scheduled_at) <= now + timedelta(hours=settings.reminder_hours_before),
+            )
+        ).all()
+    )
+
+    return appointments
+
+
+def appointments_to_auto_cancel(session: Session, now: datetime) -> list[Appointment]:
+    appointments = list(
+        session.exec(
+            select(Appointment).where(
+                col(Appointment.status).in_(ACTIVE_STATUSES),
+                col(Appointment.attendance_confirmed_at).is_(None),
+                col(Appointment.reminder_sent_at).is_not(None),
+                col(Appointment.scheduled_at) > now,
+                col(Appointment.scheduled_at) <= now + timedelta(hours=settings.confirmation_deadline_hours_before),
+            )
+        ).all()
+    )
+
+    return appointments
+
+
+def confirm_attendance(session: Session, appointment_id: int, now: datetime) -> Appointment:
+    appointment = session.get(Appointment, appointment_id)
+
+    if appointment is None:
+        raise ResourceDoesNotExistError("Appointment does not exist.")
+
+    if appointment.status not in ACTIVE_STATUSES:
+        raise AppointmentNotActiveError(
+            "This appointment is no longer active (it was cancelled or already happened). Please contact NailsByScooby."
+        )
+
+    if appointment.attendance_confirmed_at is not None:
+        return appointment
+
+    appointment.attendance_confirmed_at = now
+    session.add(appointment)
+    session.flush()
 
     return appointment

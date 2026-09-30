@@ -7,8 +7,8 @@ from bx_sch_4_nbs.database.helpers import DatabaseSession
 from bx_sch_4_nbs.database.models import Appointment
 from bx_sch_4_nbs.database.queries import availability, policies, prices, schedule
 from bx_sch_4_nbs.database.types import NailSize
-from bx_sch_4_nbs.helpers.authentication import CurrentUser
-from bx_sch_4_nbs.helpers.common import to_studio_time
+from bx_sch_4_nbs.helpers.authentication import CurrentUser, read_attendance_token
+from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
 from bx_sch_4_nbs.helpers.email import (
     send_cancelled_appointment_notification,
     send_cancelled_appointment_notification_client,
@@ -18,6 +18,7 @@ from bx_sch_4_nbs.helpers.security import decrypt_email
 from bx_sch_4_nbs.routers.schemas.appointments import (
     AppointmentDetails,
     AppointmentResult,
+    AttendanceConfirmation,
     AvailableDay,
     BookingResult,
     CancellationRequest,
@@ -27,6 +28,7 @@ from bx_sch_4_nbs.routers.schemas.appointments import (
     PossibleExtraResult,
 )
 from bx_sch_4_nbs.routers.schemas.responses import (
+    AppointmentResponse,
     AvailabilityResponse,
     CancellationResponse,
     EstimateResponse,
@@ -81,6 +83,17 @@ def estimate(session: DatabaseSession, user: CurrentUser, data: AppointmentDetai
         has_other_professional_nails=data.has_other_professional_nails,
     )
     return EstimateResponse(status="OK", detail=EstimateResult.model_validate(result))
+
+
+@router.post(
+    "/attendance/confirm",
+    description="Confirms the appointment through email with a unique generated token",
+)
+def confirm_appointment(session: DatabaseSession, data: AttendanceConfirmation) -> AppointmentResponse:
+    appointment_to_confirm = read_attendance_token(data.token)
+    appointment = schedule.confirm_attendance(session, appointment_to_confirm, utc_now())
+
+    return AppointmentResponse(status="OK", detail=AppointmentResult.model_validate(appointment))
 
 
 @router.post(

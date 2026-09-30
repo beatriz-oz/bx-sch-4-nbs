@@ -2,8 +2,10 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from bx_sch_4_nbs.database.exceptions import (
+    AppointmentNotActiveError,
     CancellationNotAllowedError,
     DuplicateResourceError,
+    InvalidAttendanceTokenError,
     InvalidVerificationCodeError,
     ResourceDoesNotExistError,
     VerificationCodeCooldownError,
@@ -75,6 +77,32 @@ async def handle_cancellation_not_allowed(
     )
 
 
+async def handle_invalid_attendance_token(
+    _: Request,
+    error: Exception,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "status": "KO",
+            "detail": str(error),
+        },
+    )
+
+
+async def handle_appointment_not_active(
+    _: Request,
+    error: Exception,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={
+            "status": "KO",
+            "detail": str(error),
+        },
+    )
+
+
 def setup_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         DuplicateResourceError,
@@ -95,4 +123,12 @@ def setup_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(
         CancellationNotAllowedError,
         handle_cancellation_not_allowed,
+    )
+    app.add_exception_handler(
+        InvalidAttendanceTokenError,
+        handle_invalid_attendance_token,
+    )
+    app.add_exception_handler(
+        AppointmentNotActiveError,
+        handle_appointment_not_active,
     )

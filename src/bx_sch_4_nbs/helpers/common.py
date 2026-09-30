@@ -13,7 +13,9 @@ def normalize_instagram(handle: str) -> str:
 
 
 def utc_now() -> datetime:
-    return datetime.now(UTC).replace(tzinfo=None)
+    # Whole seconds only: MySQL DATETIME has no fractional seconds, so the value kept in Python
+    # must match exactly what gets stored (MySQL would otherwise round the fraction).
+    return datetime.now(UTC).replace(tzinfo=None, microsecond=0)
 
 
 def parse_instagram(handle: str) -> str:

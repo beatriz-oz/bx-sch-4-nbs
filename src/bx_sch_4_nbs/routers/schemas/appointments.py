@@ -101,3 +101,7 @@ class CancellationRequest(BaseModel):
 class CancellationResult(BaseModel):
     appointment: AppointmentResult
     deposit_refund_due: bool
+
+
+class AttendanceConfirmation(BaseModel):
+    token: str

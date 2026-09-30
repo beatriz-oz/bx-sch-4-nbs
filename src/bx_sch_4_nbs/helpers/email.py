@@ -115,6 +115,57 @@ def send_cancelled_appointment_notification_client(to: str, when: str, deposit_p
             "Hello!\n\n"
             f"Your appointment on {when} (Lisbon time) has been cancelled.\n"
             f"{deposit_line}\n\n"
-            "If you did not cancel this appointment, please contact the studio immediately."
+            "If you did not cancel this appointment, please contact NailsByScooby immediately."
+        ),
+    )
+
+
+def send_attendance_reminder(to: str, when: str, deadline: str, token: str) -> None:
+    url = f"{settings.frontend_url}/confirm-attendance?token={token}"
+    send_email(
+        to=to,
+        subject="Please confirm your appointment - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            f"Your appointment is on {when} (Lisbon time). We are looking forward to seeing you!\n\n"
+            f"Please confirm your attendance by {deadline} (Lisbon time):\n"
+            f"{url}\n\n"
+            "If the appointment is not confirmed in time, it will be cancelled and the deposit "
+            "will not be refunded.\n\n"
+            "If you do not recognize this appointment, please contact Nails by Scooby immediately."
+        ),
+    )
+
+
+def send_auto_cancelled_notification_client(to: str, when: str) -> None:
+    send_email(
+        to=to,
+        subject="Your appointment has been cancelled - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            f"Your appointment on {when} (Lisbon time) has been cancelled because the attendance was not "
+            f"confirmed at least {settings.confirmation_deadline_hours_before} hours before.\n"
+            "As stated in the booking policies, the deposit is not refunded in this case.\n\n"
+            "If you have any questions, please contact Nails by Scooby."
+        ),
+    )
+
+
+def send_auto_cancelled_notification_studio(
+    to: str, client_instagram: str | None, client_name: str, when: str, deposit_paid: bool
+) -> None:
+    instagram_label = f"@{client_instagram}" if client_instagram else "no Instagram"
+    if deposit_paid:
+        deposit_line = "The deposit was paid and is not refunded."
+    else:
+        deposit_line = "The deposit had not been paid."
+
+    send_email(
+        to=to,
+        subject=f"CANCELLED - {when}",
+        body=(
+            f"Appointment automatically cancelled: {instagram_label} - {client_name} on {when} (Lisbon time).\n\n"
+            "Reason: the client did not confirm attendance in time.\n"
+            f"{deposit_line}"
         ),
     )

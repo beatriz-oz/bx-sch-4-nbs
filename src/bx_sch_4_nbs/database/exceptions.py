@@ -24,3 +24,11 @@ class VerificationCodeCooldownError(Exception):
 
 class CancellationNotAllowedError(Exception):
     pass
+
+
+class InvalidAttendanceTokenError(Exception):
+    pass
+
+
+class AppointmentNotActiveError(Exception):
+    pass

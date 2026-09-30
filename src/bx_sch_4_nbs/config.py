@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     restricted_size_slots: list[time] = [time(10, 0), time(17, 0)]
     maintenance_max_days: int = 35
     free_cancellation_hours: int = 48
+    reminder_hours_before: int = 24
+    confirmation_deadline_hours_before: int = 4
+    frontend_url: str = "http://localhost:4200"
 
     model_config = SettingsConfigDict(env_file=".env")
 
