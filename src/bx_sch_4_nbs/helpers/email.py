@@ -17,21 +17,31 @@ def _build_message(to: str, subject: str, body: str) -> EmailMessage:
     return message
 
 
-def send_emails(messages: list[EmailMessage]) -> None:
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
-        if settings.smtp_use_tls:
-            smtp.starttls()
-        if settings.smtp_username and settings.smtp_password:
-            smtp.login(settings.smtp_username, settings.smtp_password)
-        for message in messages:
-            try:
-                smtp.send_message(message)
-            except smtplib.SMTPException:
-                logger.exception("Failed to send email to %s", message["To"])
+def send_emails(messages: list[EmailMessage]) -> set[str]:
+    failed_emails: set[str] = set()
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
+            if settings.smtp_use_tls:
+                smtp.starttls()
+            if settings.smtp_username and settings.smtp_password:
+                smtp.login(settings.smtp_username, settings.smtp_password)
+            for message in messages:
+                try:
+                    smtp.send_message(message)
+                except smtplib.SMTPException:
+                    logger.exception("Failed to send email to %s", message["To"])
+                    failed_emails.add(message["To"])
+    except OSError, smtplib.SMTPException:
+        logger.exception("Error trying to send the emails")
+        return {message["To"] for message in messages}
+
+    return failed_emails
 
 
-def send_email(to: str, subject: str, body: str) -> None:
-    send_emails([_build_message(to, subject, body)])
+def send_email(to: str, subject: str, body: str) -> bool:
+    failed_emails = send_emails([_build_message(to, subject, body)])
+
+    return to not in failed_emails
 
 
 def send_verification_code(to: str, code: str) -> None:
@@ -79,7 +89,12 @@ def send_new_appointment_notification(
 
 
 def send_cancelled_appointment_notification(
-    to: str, client_instagram: str | None, client_name: str, when: str, deposit_paid: bool, refund_due: bool
+    to: str,
+    client_instagram: str | None,
+    client_name: str,
+    when: str,
+    deposit_paid: bool,
+    refund_due: bool,
 ) -> None:
     instagram_label = f"@{client_instagram}" if client_instagram else "no Instagram"
 
@@ -120,9 +135,9 @@ def send_cancelled_appointment_notification_client(to: str, when: str, deposit_p
     )
 
 
-def send_attendance_reminder(to: str, when: str, deadline: str, token: str) -> None:
+def send_attendance_reminder(to: str, when: str, deadline: str, token: str) -> bool:
     url = f"{settings.frontend_url}/confirm-attendance?token={token}"
-    send_email(
+    email_sent = send_email(
         to=to,
         subject="Please confirm your appointment - Nails by Scooby",
         body=(
@@ -135,10 +150,11 @@ def send_attendance_reminder(to: str, when: str, deadline: str, token: str) -> N
             "If you do not recognize this appointment, please contact Nails by Scooby immediately."
         ),
     )
+    return email_sent
 
 
-def send_auto_cancelled_notification_client(to: str, when: str) -> None:
-    send_email(
+def send_auto_cancelled_notification_client(to: str, when: str) -> bool:
+    return send_email(
         to=to,
         subject="Your appointment has been cancelled - Nails by Scooby",
         body=(
@@ -152,20 +168,29 @@ def send_auto_cancelled_notification_client(to: str, when: str) -> None:
 
 
 def send_auto_cancelled_notification_studio(
-    to: str, client_instagram: str | None, client_name: str, when: str, deposit_paid: bool
+    to: str, client_instagram: str | None, client_name: str, when: str, deposit_paid: bool, email_sent_to_client: bool
 ) -> None:
+    subject = f"CANCELLED - {when}"
+    if not email_sent_to_client:
+        subject = f"CANCELLED : ACTION REQUIRED - {when}"
+
     instagram_label = f"@{client_instagram}" if client_instagram else "no Instagram"
     if deposit_paid:
         deposit_line = "The deposit was paid and is not refunded."
     else:
         deposit_line = "The deposit had not been paid."
 
+    action_text = ""
+    if not email_sent_to_client:
+        action_text = "The email was not sent. Please, contact the client to warn the auto cancelled appointment!\n\n"
+
     send_email(
         to=to,
-        subject=f"CANCELLED - {when}",
+        subject=subject,
         body=(
+            f"{action_text}"
             f"Appointment automatically cancelled: {instagram_label} - {client_name} on {when} (Lisbon time).\n\n"
             "Reason: the client did not confirm attendance in time.\n"
-            f"{deposit_line}"
+            f"{deposit_line}\n"
         ),
     )

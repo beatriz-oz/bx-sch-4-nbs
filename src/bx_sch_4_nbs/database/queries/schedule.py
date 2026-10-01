@@ -28,6 +28,22 @@ ACTIVE_STATUSES = (
 REFUNDABLE_REASONS = (CancellationReason.CLIENT_EARLY, CancellationReason.BY_STUDIO)
 
 
+def _apply_cancellation(
+    session: Session, appointment: Appointment, reason: CancellationReason, cancelled_by: int | None, now: datetime
+) -> None:
+    appointment.status = AppointmentStatus.CANCELLED
+    appointment.cancelled_at = now
+    appointment.cancelled_by = cancelled_by
+    appointment.cancellation_reason = reason
+    session.add(appointment)
+
+    booked_slot = session.get(BookedSlot, appointment.scheduled_at)
+    if booked_slot is not None:
+        session.delete(booked_slot)
+
+    session.flush()
+
+
 def list_exceptions(session: Session, first_day: date, last_day: date) -> list[ScheduleException]:
     return list(
         session.exec(
@@ -92,18 +108,18 @@ def cancel_appointment(session: Session, appointment_id: int, user_id: int, acce
             "the deposit will not be refunded. Send accept_deposit_loss: true to confirm."
         )
 
-    appointment.status = AppointmentStatus.CANCELLED
-    appointment.cancelled_at = now
-    appointment.cancelled_by = user_id
-    appointment.cancellation_reason = reason
-    session.add(appointment)
-
-    booked_slot = session.get(BookedSlot, appointment.scheduled_at)
-    if booked_slot is not None:
-        session.delete(booked_slot)
-
-    session.flush()
+    _apply_cancellation(session, appointment, reason, user_id, now)
     return appointment
+
+
+def auto_cancel_appointment(session: Session, appointment: Appointment, now: datetime) -> None:
+    _apply_cancellation(session, appointment, CancellationReason.NOT_CONFIRMED, None, now)
+
+
+def mark_reminder_sent(session: Session, appointment: Appointment, now: datetime) -> None:
+    appointment.reminder_sent_at = now
+    session.add(appointment)
+    session.flush()
 
 
 def create_appointment(
