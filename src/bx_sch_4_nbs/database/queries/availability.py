@@ -43,7 +43,11 @@ def available_slots(
     month: int,
     nail_size: NailSize | None = None,
     require_published: bool = True,
+    now: datetime | None = None,
 ) -> list[datetime]:
+    if not now:
+        now = utc_now()
+
     if require_published and not is_month_published(session, year, month):
         return []
 
@@ -57,7 +61,6 @@ def available_slots(
         start=to_utc(datetime.combine(first_day, time.min)),
         end=to_utc(datetime.combine(last_day + timedelta(days=1), time.min)),
     )
-    now = utc_now()
 
     result = []
     for day_number in range(days_in_month):
@@ -68,7 +71,7 @@ def available_slots(
             if not is_slot_allowed_for_size(slot_time, nail_size):
                 continue
             slot_at = to_utc(datetime.combine(day, slot_time))
-            if slot_at in booked or slot_at <= now:
+            if slot_at in booked or slot_at <= now + timedelta(hours=settings.min_booking_advance_hours):
                 continue
             result.append(slot_at)
 

@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     reminder_hours_before: int = 24
     confirmation_deadline_hours_before: int = 4
     frontend_url: str = "http://localhost:4200"
+    min_booking_advance_hours: int = 24
 
     model_config = SettingsConfigDict(env_file=".env")
 
