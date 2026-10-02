@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     confirmation_deadline_hours_before: int = 4
     frontend_url: str = "http://localhost:4200"
     min_booking_advance_hours: int = 24
+    deposit_overdue_days: int = 2
 
     model_config = SettingsConfigDict(env_file=".env")
 

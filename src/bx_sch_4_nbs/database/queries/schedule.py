@@ -11,7 +11,12 @@ from bx_sch_4_nbs.database.exceptions import (
     DuplicateResourceError,
     ResourceDoesNotExistError,
 )
-from bx_sch_4_nbs.database.models import Appointment, BookedSlot, ScheduleException
+from bx_sch_4_nbs.database.models import (
+    Appointment,
+    BookedSlot,
+    ScheduleException,
+    User,
+)
 from bx_sch_4_nbs.database.types import (
     AppointmentStatus,
     CancellationReason,
@@ -29,7 +34,11 @@ REFUNDABLE_REASONS = (CancellationReason.CLIENT_EARLY, CancellationReason.BY_STU
 
 
 def _apply_cancellation(
-    session: Session, appointment: Appointment, reason: CancellationReason, cancelled_by: int | None, now: datetime
+    session: Session,
+    appointment: Appointment,
+    reason: CancellationReason,
+    cancelled_by: int | None,
+    now: datetime,
 ) -> None:
     appointment.status = AppointmentStatus.CANCELLED
     appointment.cancelled_at = now
@@ -214,3 +223,41 @@ def confirm_attendance(session: Session, appointment_id: int, now: datetime) -> 
     session.flush()
 
     return appointment
+
+
+def list_appointments(
+    session: Session,
+    first_day: date,
+    last_day: date,
+    status: AppointmentStatus | None = None,
+) -> list[tuple[Appointment, User]]:
+
+    start = to_utc(datetime.combine(first_day, time.min))
+    end = to_utc(datetime.combine(last_day + timedelta(days=1), time.min))
+
+    statement = (
+        select(Appointment, User)
+        .join(User, col(Appointment.user_id) == col(User.id))
+        .where(
+            col(Appointment.scheduled_at) >= start,
+            col(Appointment.scheduled_at) < end,
+        )
+        .order_by(col(Appointment.scheduled_at))
+    )
+
+    if status is not None:
+        statement = statement.where(col(Appointment.status) == status)
+
+    result = list(session.exec(statement).all())
+
+    return result
+
+
+def is_deposit_overdue(appointment: Appointment, now: datetime) -> bool:
+    scheduled = AppointmentStatus.SCHEDULED
+    limit = now - timedelta(days=settings.deposit_overdue_days)
+
+    if not appointment.created_at:
+        return False
+
+    return appointment.status == scheduled and appointment.created_at < limit

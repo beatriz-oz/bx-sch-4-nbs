@@ -2,7 +2,7 @@ import calendar
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 
 from bx_sch_4_nbs.database.helpers import DatabaseSession
 from bx_sch_4_nbs.database.queries import approved_list as queries
@@ -14,11 +14,14 @@ from bx_sch_4_nbs.database.queries import (
     schedule,
     users,
 )
-from bx_sch_4_nbs.database.types import NailSize
+from bx_sch_4_nbs.database.queries.schedule import list_appointments
+from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize
 from bx_sch_4_nbs.helpers.authentication import get_current_admin
+from bx_sch_4_nbs.helpers.common import utc_now
 from bx_sch_4_nbs.helpers.email import send_agenda_published
 from bx_sch_4_nbs.helpers.security import decrypt_email
 from bx_sch_4_nbs.routers.schemas.admin import (
+    AdminAppointmentResult,
     NewPolicy,
     NewPreApprovedInstagram,
     PolicyResult,
@@ -35,6 +38,7 @@ from bx_sch_4_nbs.routers.schemas.prices import (
 )
 from bx_sch_4_nbs.routers.schemas.responses import (
     AddonPriceResponse,
+    AdminAppointmentResponse,
     AvailabilityPreviewResponse,
     MessageResponse,
     MonthPublishedResponse,
@@ -236,3 +240,25 @@ def get_availability_preview(
             days=AvailableDay.from_utc_slots(slots),
         ),
     )
+
+
+@router.get("/appointments", description="Get all appointments within a period")
+def get_appointments(
+    session: DatabaseSession,
+    start_date: date,
+    end_date: date,
+    appointment_status: Annotated[AppointmentStatus | None, Query(alias="status")] = None,
+) -> AdminAppointmentResponse:
+
+    if end_date < start_date:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "The end date must be after the given start date",
+        )
+
+    now = utc_now()
+    appointments = list_appointments(session, start_date, end_date, appointment_status)
+
+    results = [AdminAppointmentResult.from_row(appointment, user, now) for appointment, user in appointments]
+
+    return AdminAppointmentResponse(status="OK", detail=results)
