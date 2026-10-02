@@ -5,8 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 
 from bx_sch_4_nbs.database.helpers import DatabaseSession
-from bx_sch_4_nbs.database.queries import approved_list as queries
 from bx_sch_4_nbs.database.queries import (
+    admin,
     availability,
     policies,
     prices,
@@ -14,11 +14,12 @@ from bx_sch_4_nbs.database.queries import (
     schedule,
     users,
 )
+from bx_sch_4_nbs.database.queries import approved_list as queries
 from bx_sch_4_nbs.database.queries.schedule import list_appointments
 from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize
 from bx_sch_4_nbs.helpers.authentication import get_current_admin
-from bx_sch_4_nbs.helpers.common import utc_now
-from bx_sch_4_nbs.helpers.email import send_agenda_published
+from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
+from bx_sch_4_nbs.helpers.email import send_agenda_published, send_deposit_confirmation
 from bx_sch_4_nbs.helpers.security import decrypt_email
 from bx_sch_4_nbs.routers.schemas.admin import (
     AdminAppointmentResult,
@@ -38,6 +39,7 @@ from bx_sch_4_nbs.routers.schemas.prices import (
 )
 from bx_sch_4_nbs.routers.schemas.responses import (
     AddonPriceResponse,
+    AdminAppointmentListResponse,
     AdminAppointmentResponse,
     AvailabilityPreviewResponse,
     MessageResponse,
@@ -248,7 +250,7 @@ def get_appointments(
     start_date: date,
     end_date: date,
     appointment_status: Annotated[AppointmentStatus | None, Query(alias="status")] = None,
-) -> AdminAppointmentResponse:
+) -> AdminAppointmentListResponse:
 
     if end_date < start_date:
         raise HTTPException(
@@ -261,4 +263,24 @@ def get_appointments(
 
     results = [AdminAppointmentResult.from_row(appointment, user, now) for appointment, user in appointments]
 
-    return AdminAppointmentResponse(status="OK", detail=results)
+    return AdminAppointmentListResponse(status="OK", detail=results)
+
+
+@router.post(
+    "/appointments/{appointment_id}/deposit",
+    description="Confirms that the deposit has been paid. Only the admin can approve this",
+)
+def confirm_deposit(
+    session: DatabaseSession, appointment_id: int, background_tasks: BackgroundTasks
+) -> AdminAppointmentResponse:
+    now = utc_now()
+    appointment, user, is_confirmed = admin.confirm_deposit(session, appointment_id, now)
+
+    if is_confirmed:
+        background_tasks.add_task(
+            send_deposit_confirmation,
+            decrypt_email(user.email_encrypted),
+            str(to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M")),
+        )
+
+    return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, user, now))

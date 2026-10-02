@@ -1,3 +1,4 @@
+# ruff: noqa: DTZ001
 from datetime import datetime
 
 from sqlmodel import Session

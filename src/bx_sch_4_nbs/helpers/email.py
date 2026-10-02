@@ -194,3 +194,19 @@ def send_auto_cancelled_notification_studio(
             f"{deposit_line}\n"
         ),
     )
+
+
+def send_deposit_confirmation(to: str, when: str) -> None:
+    send_email(
+        to=to,
+        subject="Your deposit has been received - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            f"We have received your deposit, and your appointment on {when} (Lisbon time) is confirmed.\n\n"
+            f"{settings.reminder_hours_before} hours before the appointment, you will receive an email "
+            "asking you to confirm your attendance.\n"
+            f"If you need to cancel, please do so more than {settings.free_cancellation_hours} hours before "
+            "the appointment to have your deposit refunded, as stated in the booking policies.\n\n"
+            "If you did not make this payment, please contact Nails by Scooby."
+        ),
+    )

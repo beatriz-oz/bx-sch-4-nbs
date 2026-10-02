@@ -1,6 +1,7 @@
 # ruff: noqa: DTZ001
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
@@ -58,7 +59,7 @@ ANA, POLICY = ana.id, policy.id
 old = datetime(2020, 1, 1)
 
 
-def make(day: int, status=AppointmentStatus.SCHEDULED, **fields: object) -> None:
+def make(day: int, status=AppointmentStatus.SCHEDULED, **fields: Any) -> None:
     when = datetime(2030, 3, day, 14, 0)
     session.add(
         Appointment(
