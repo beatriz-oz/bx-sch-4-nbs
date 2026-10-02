@@ -168,7 +168,12 @@ def send_auto_cancelled_notification_client(to: str, when: str) -> bool:
 
 
 def send_auto_cancelled_notification_studio(
-    to: str, client_instagram: str | None, client_name: str, when: str, deposit_paid: bool, email_sent_to_client: bool
+    to: str,
+    client_instagram: str | None,
+    client_name: str,
+    when: str,
+    deposit_paid: bool,
+    email_sent_to_client: bool,
 ) -> None:
     subject = f"CANCELLED - {when}"
     if not email_sent_to_client:
@@ -208,5 +213,24 @@ def send_deposit_confirmation(to: str, when: str) -> None:
             f"If you need to cancel, please do so more than {settings.free_cancellation_hours} hours before "
             "the appointment to have your deposit refunded, as stated in the booking policies.\n\n"
             "If you did not make this payment, please contact Nails by Scooby."
+        ),
+    )
+
+
+def send_cancelled_by_studio_notification(to: str, when: str, deposit_paid: bool, message: str | None) -> None:
+    message_text = f"Message from Scooby: {message}\n\n" if message else ""
+    deposit_status = "Your deposit has been paid and will be refunded."
+    if not deposit_paid:
+        deposit_status = "Your deposit payment has not been registered, so no actions will be taken."
+    send_email(
+        to=to,
+        subject="Your appointment has been cancelled by the studio - Nails by Scooby",
+        body=(
+            "Hello, \n\n"
+            f"Sorry, but your appointment at {when} needed to be cancelled.\n"
+            "If you have any concerns about this, please contact NailsByScooby.\n\n"
+            f"{deposit_status}\n\n"
+            f"{message_text}"
+            f"We would love to see you soon! You can book a new appointment at {settings.frontend_url}."
         ),
     )

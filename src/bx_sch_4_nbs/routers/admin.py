@@ -15,11 +15,16 @@ from bx_sch_4_nbs.database.queries import (
     users,
 )
 from bx_sch_4_nbs.database.queries import approved_list as queries
+from bx_sch_4_nbs.database.queries.admin import cancel_appointment_by_studio
 from bx_sch_4_nbs.database.queries.schedule import list_appointments
 from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize
-from bx_sch_4_nbs.helpers.authentication import get_current_admin
+from bx_sch_4_nbs.helpers.authentication import CurrentAdmin, get_current_admin
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
-from bx_sch_4_nbs.helpers.email import send_agenda_published, send_deposit_confirmation
+from bx_sch_4_nbs.helpers.email import (
+    send_agenda_published,
+    send_cancelled_by_studio_notification,
+    send_deposit_confirmation,
+)
 from bx_sch_4_nbs.helpers.security import decrypt_email
 from bx_sch_4_nbs.routers.schemas.admin import (
     AdminAppointmentResult,
@@ -27,6 +32,7 @@ from bx_sch_4_nbs.routers.schemas.admin import (
     NewPreApprovedInstagram,
     PolicyResult,
     PreApprovedInstagramResult,
+    StudioCancellation,
 )
 from bx_sch_4_nbs.routers.schemas.appointments import AvailabilityPreview, AvailableDay
 from bx_sch_4_nbs.routers.schemas.prices import (
@@ -61,7 +67,9 @@ from bx_sch_4_nbs.routers.schemas.schedule import (
     ScheduleExceptionSet,
 )
 
-router = APIRouter(prefix="/admin", tags=["Admin"], dependencies=[Depends(get_current_admin)])
+router = APIRouter(
+    prefix="/admin", tags=["Admin"], dependencies=[Depends(get_current_admin)]
+)
 
 
 @router.get(
@@ -82,13 +90,17 @@ def get_pre_approved_instagrams(
     "/pre-approved-instagrams",
     description="Pre-approve an Instagram handle for a first-time booking",
     status_code=status.HTTP_201_CREATED,
-    responses={status.HTTP_409_CONFLICT: {"description": "Handle already pre-approved"}},
+    responses={
+        status.HTTP_409_CONFLICT: {"description": "Handle already pre-approved"}
+    },
 )
 def add_pre_approved_instagram(
     session: DatabaseSession, new_entry: NewPreApprovedInstagram
 ) -> PreApprovedInstagramResponse:
     entry = queries.create_pre_approved_instagram(session, new_entry.instagram)
-    return PreApprovedInstagramResponse(status="OK", detail=PreApprovedInstagramResult.model_validate(entry))
+    return PreApprovedInstagramResponse(
+        status="OK", detail=PreApprovedInstagramResult.model_validate(entry)
+    )
 
 
 @router.delete(
@@ -96,7 +108,9 @@ def add_pre_approved_instagram(
     description="Remove a handle from the pre-approved list",
     responses={status.HTTP_404_NOT_FOUND: {"description": "Entry does not exist"}},
 )
-def remove_pre_approved_instagram(session: DatabaseSession, entry_id: int) -> MessageResponse:
+def remove_pre_approved_instagram(
+    session: DatabaseSession, entry_id: int
+) -> MessageResponse:
     queries.delete_pre_approved_instagram(session, entry_id)
     return MessageResponse(status="OK", detail="Pre-approved Instagram removed")
 
@@ -115,21 +129,37 @@ def publish_policy(session: DatabaseSession, new_policy: NewPolicy) -> PolicyRes
 @router.put(
     "/prices/service",
     description="Update the base price of a service (and nail size)",
-    responses={status.HTTP_404_NOT_FOUND: {"description": "No price for this service and nail size"}},
+    responses={
+        status.HTTP_404_NOT_FOUND: {
+            "description": "No price for this service and nail size"
+        }
+    },
 )
-def update_service_price(session: DatabaseSession, data: ServicePriceUpdate) -> ServicePriceResponse:
-    price = prices.update_service_price(session, data.service, data.nail_size, data.amount)
-    return ServicePriceResponse(status="OK", detail=ServicePriceResult.model_validate(price))
+def update_service_price(
+    session: DatabaseSession, data: ServicePriceUpdate
+) -> ServicePriceResponse:
+    price = prices.update_service_price(
+        session, data.service, data.nail_size, data.amount
+    )
+    return ServicePriceResponse(
+        status="OK", detail=ServicePriceResult.model_validate(price)
+    )
 
 
 @router.put(
     "/prices/nail-art",
     description="Update the price of a nail art level",
-    responses={status.HTTP_404_NOT_FOUND: {"description": "No price for this nail art level"}},
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "No price for this nail art level"}
+    },
 )
-def update_nail_art_price(session: DatabaseSession, data: NailArtPriceUpdate) -> NailArtPriceResponse:
+def update_nail_art_price(
+    session: DatabaseSession, data: NailArtPriceUpdate
+) -> NailArtPriceResponse:
     price = prices.update_nail_art_price(session, data.nail_art_level, data.amount)
-    return NailArtPriceResponse(status="OK", detail=NailArtPriceResult.model_validate(price))
+    return NailArtPriceResponse(
+        status="OK", detail=NailArtPriceResult.model_validate(price)
+    )
 
 
 @router.put(
@@ -137,9 +167,13 @@ def update_nail_art_price(session: DatabaseSession, data: NailArtPriceUpdate) ->
     description="Update the price of an addon (broken nail, extra charm)",
     responses={status.HTTP_404_NOT_FOUND: {"description": "No price for this addon"}},
 )
-def update_addon_price(session: DatabaseSession, data: AddonPriceUpdate) -> AddonPriceResponse:
+def update_addon_price(
+    session: DatabaseSession, data: AddonPriceUpdate
+) -> AddonPriceResponse:
     price = prices.update_addon_price(session, data.addon, data.amount)
-    return AddonPriceResponse(status="OK", detail=AddonPriceResult.model_validate(price))
+    return AddonPriceResponse(
+        status="OK", detail=AddonPriceResult.model_validate(price)
+    )
 
 
 @router.get("/schedule-exceptions", description="Schedule exceptions of a month")
@@ -161,7 +195,9 @@ def get_schedule_exceptions(
     "/schedule-exceptions",
     description="Open or close a whole day (slot_time empty) or a single slot",
 )
-def set_schedule_exception(session: DatabaseSession, data: ScheduleExceptionSet) -> ScheduleExceptionResponse:
+def set_schedule_exception(
+    session: DatabaseSession, data: ScheduleExceptionSet
+) -> ScheduleExceptionResponse:
     entry = schedule.set_exception(session, data.day, data.slot_time, data.is_open)
 
     warning = None
@@ -182,7 +218,9 @@ def set_schedule_exception(session: DatabaseSession, data: ScheduleExceptionSet)
     description="Remove an exception; the day goes back to the weekly default",
     responses={status.HTTP_404_NOT_FOUND: {"description": "Exception does not exist"}},
 )
-def remove_schedule_exception(session: DatabaseSession, exception_id: int) -> MessageResponse:
+def remove_schedule_exception(
+    session: DatabaseSession, exception_id: int
+) -> MessageResponse:
     schedule.delete_exception(session, exception_id)
     return MessageResponse(status="OK", detail="Schedule exception removed")
 
@@ -210,7 +248,10 @@ def publish_month(
     if entry.published_at is None:
         raise RuntimeError("published_at should have been set by the database.")
 
-    recipients = [decrypt_email(user.email_encrypted) for user in users.list_agenda_subscribers(session)]
+    recipients = [
+        decrypt_email(user.email_encrypted)
+        for user in users.list_agenda_subscribers(session)
+    ]
     background_tasks.add_task(send_agenda_published, recipients, data.year, data.month)
 
     return MonthPublishedResponse(
@@ -227,6 +268,7 @@ def publish_month(
 @router.get(
     "/availability-preview",
     description="What clients will see for a month, even before it is published",
+    status_code=status.HTTP_200_OK,
 )
 def get_availability_preview(
     session: DatabaseSession,
@@ -234,7 +276,9 @@ def get_availability_preview(
     month: Annotated[int, Query(ge=1, le=12)],
     nail_size: NailSize | None = None,
 ) -> AvailabilityPreviewResponse:
-    slots = availability.available_slots(session, year, month, nail_size, require_published=False)
+    slots = availability.available_slots(
+        session, year, month, nail_size, require_published=False
+    )
     return AvailabilityPreviewResponse(
         status="OK",
         detail=AvailabilityPreview(
@@ -244,12 +288,23 @@ def get_availability_preview(
     )
 
 
-@router.get("/appointments", description="Get all appointments within a period")
+@router.get(
+    "/appointments",
+    description="Get all appointments within a period",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "The end date must be after the given start date"
+        }
+    },
+)
 def get_appointments(
     session: DatabaseSession,
     start_date: date,
     end_date: date,
-    appointment_status: Annotated[AppointmentStatus | None, Query(alias="status")] = None,
+    appointment_status: Annotated[
+        AppointmentStatus | None, Query(alias="status")
+    ] = None,
 ) -> AdminAppointmentListResponse:
 
     if end_date < start_date:
@@ -261,7 +316,10 @@ def get_appointments(
     now = utc_now()
     appointments = list_appointments(session, start_date, end_date, appointment_status)
 
-    results = [AdminAppointmentResult.from_row(appointment, user, now) for appointment, user in appointments]
+    results = [
+        AdminAppointmentResult.from_row(appointment, user, now)
+        for appointment, user in appointments
+    ]
 
     return AdminAppointmentListResponse(status="OK", detail=results)
 
@@ -269,18 +327,63 @@ def get_appointments(
 @router.post(
     "/appointments/{appointment_id}/deposit",
     description="Confirms that the deposit has been paid. Only the admin can approve this",
+    status_code=status.HTTP_201_CREATED,
 )
 def confirm_deposit(
     session: DatabaseSession, appointment_id: int, background_tasks: BackgroundTasks
 ) -> AdminAppointmentResponse:
     now = utc_now()
-    appointment, user, is_confirmed = admin.confirm_deposit(session, appointment_id, now)
+    appointment, user, is_confirmed = admin.confirm_deposit(
+        session, appointment_id, now
+    )
 
     if is_confirmed:
         background_tasks.add_task(
             send_deposit_confirmation,
             decrypt_email(user.email_encrypted),
-            str(to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M")),
+            to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
         )
 
-    return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, user, now))
+    return AdminAppointmentResponse(
+        status="OK", detail=AdminAppointmentResult.from_row(appointment, user, now)
+    )
+
+
+@router.post(
+    "/appointments/{appointment_id}/cancel",
+    description="Cancels an appointment on behalf of the studio. The client is notified by email",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Appointment does not exist"},
+        status.HTTP_409_CONFLICT: {"description": "Appointment is no longer active or has already started"},
+    },
+)
+def cancel_appointment(
+    session: DatabaseSession,
+    appointment_id: int,
+    background_tasks: BackgroundTasks,
+    admin: CurrentAdmin,
+    data: StudioCancellation | None = None,
+) -> AdminAppointmentResponse:
+    if not admin.id:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "Only admins can perform this action"
+        )
+
+    now = utc_now()
+    appointment, user = cancel_appointment_by_studio(
+        session, appointment_id, admin.id, now
+    )
+    is_deposit_paid = appointment.deposit_paid_at is not None
+
+    background_tasks.add_task(
+        send_cancelled_by_studio_notification,
+        decrypt_email(user.email_encrypted),
+        to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
+        is_deposit_paid,
+        data.message if data else None,
+    )
+
+    return AdminAppointmentResponse(
+        status="OK", detail=AdminAppointmentResult.from_row(appointment, user, now)
+    )

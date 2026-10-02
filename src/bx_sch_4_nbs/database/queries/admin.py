@@ -4,11 +4,12 @@ from sqlmodel import Session
 
 from bx_sch_4_nbs.database.exceptions import (
     AppointmentNotActiveError,
+    CancellationNotAllowedError,
     ResourceDoesNotExistError,
 )
 from bx_sch_4_nbs.database.models import Appointment, User
 from bx_sch_4_nbs.database.queries import schedule
-from bx_sch_4_nbs.database.types import AppointmentStatus
+from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason
 
 
 def confirm_deposit(session: Session, appointment_id: int, now: datetime) -> tuple[Appointment, User, bool]:
@@ -35,3 +36,39 @@ def confirm_deposit(session: Session, appointment_id: int, now: datetime) -> tup
     session.flush()
 
     return appointment, user, True
+
+
+def cancel_appointment_by_studio(
+    session: Session,
+    appointment_id: int,
+    admin_id: int,
+    now: datetime,
+) -> tuple[Appointment, User]:
+    appointment = session.get(Appointment, appointment_id)
+
+    if not appointment:
+        raise ResourceDoesNotExistError("The appointment does not exist")
+
+    user = session.get(User, appointment.user_id)
+    if not user:
+        raise ResourceDoesNotExistError("The user does not exist")
+
+    if appointment.status not in schedule.ACTIVE_STATUSES:
+        raise AppointmentNotActiveError(
+            f"Appointment cannot be cancelled, the current status is: {appointment.status.value}"
+        )
+
+    if appointment.scheduled_at <= now:
+        raise CancellationNotAllowedError(
+            "This appointment cannot be cancelled. Please, define this appointment as completed or no_show"
+        )
+
+    schedule.apply_cancellation(
+        session,
+        appointment,
+        reason=CancellationReason.BY_STUDIO,
+        cancelled_by=admin_id,
+        now=now,
+    )
+
+    return appointment, user

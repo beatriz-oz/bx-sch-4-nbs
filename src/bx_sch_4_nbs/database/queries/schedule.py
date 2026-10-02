@@ -33,7 +33,7 @@ ACTIVE_STATUSES = (
 REFUNDABLE_REASONS = (CancellationReason.CLIENT_EARLY, CancellationReason.BY_STUDIO)
 
 
-def _apply_cancellation(
+def apply_cancellation(
     session: Session,
     appointment: Appointment,
     reason: CancellationReason,
@@ -117,12 +117,12 @@ def cancel_appointment(session: Session, appointment_id: int, user_id: int, acce
             "the deposit will not be refunded. Send accept_deposit_loss: true to confirm."
         )
 
-    _apply_cancellation(session, appointment, reason, user_id, now)
+    apply_cancellation(session, appointment, reason, user_id, now)
     return appointment
 
 
 def auto_cancel_appointment(session: Session, appointment: Appointment, now: datetime) -> None:
-    _apply_cancellation(session, appointment, CancellationReason.NOT_CONFIRMED, None, now)
+    apply_cancellation(session, appointment, CancellationReason.NOT_CONFIRMED, None, now)
 
 
 def mark_reminder_sent(session: Session, appointment: Appointment, now: datetime) -> None:

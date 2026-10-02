@@ -107,3 +107,7 @@ class AdminAppointmentResult(BaseModel):
             deposit_overdue=deposit_overdue,
             refund_due=refund_due,
         )
+
+
+class StudioCancellation(BaseModel):
+    message: str | None = Field(default=None, max_length=500)
