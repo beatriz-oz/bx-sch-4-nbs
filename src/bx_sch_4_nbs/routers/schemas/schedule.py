@@ -62,3 +62,23 @@ class PublishedMonthResult(BaseModel):
 
 class MonthPublished(PublishedMonthResult):
     notified_clients: int
+
+
+class AgendaSlotResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    time: time
+    is_open: bool
+    is_booked: bool
+
+
+class AgendaDay(BaseModel):
+    day: date
+    slots: list[AgendaSlotResult]
+
+
+class AgendaMonth(BaseModel):
+    year: int
+    month: int
+    published_at: StudioDatetime | None
+    days: list[AgendaDay]

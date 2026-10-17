@@ -54,6 +54,7 @@ from bx_sch_4_nbs.routers.schemas.responses import (
     AddonPriceResponse,
     AdminAppointmentListResponse,
     AdminAppointmentResponse,
+    AgendaMonthResponse,
     AvailabilityPreviewResponse,
     ClientListResponse,
     FinalPriceEstimateResponse,
@@ -69,6 +70,9 @@ from bx_sch_4_nbs.routers.schemas.responses import (
     ServicePriceResponse,
 )
 from bx_sch_4_nbs.routers.schemas.schedule import (
+    AgendaDay,
+    AgendaMonth,
+    AgendaSlotResult,
     MonthPublish,
     MonthPublished,
     PublishedMonthResult,
@@ -235,6 +239,34 @@ def publish_month(
             month=entry.month,
             published_at=entry.published_at,
             notified_clients=len(recipients),
+        ),
+    )
+
+
+@router.get(
+    "/agenda",
+    description=(
+        "The standard slots of a month as the clients see them (open or closed, booked or free), "
+        "after the weekly rule and the exceptions. Read-only: change it with schedule-exceptions"
+    ),
+)
+def get_agenda(
+    session: DatabaseSession,
+    year: Annotated[int, Query(ge=2026, le=2100)],
+    month: Annotated[int, Query(ge=1, le=12)],
+) -> AgendaMonthResponse:
+    published = published_months.get_published_month(session, year, month)
+    agenda = availability.month_agenda(session, year, month)
+    return AgendaMonthResponse(
+        status="OK",
+        detail=AgendaMonth(
+            year=year,
+            month=month,
+            published_at=published.published_at if published else None,
+            days=[
+                AgendaDay(day=day, slots=[AgendaSlotResult.model_validate(slot) for slot in slots])
+                for day, slots in agenda.items()
+            ],
         ),
     )
 

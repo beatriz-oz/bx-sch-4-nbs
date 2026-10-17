@@ -24,3 +24,7 @@ def publish_month(session: Session, year: int, month: int) -> PublishedMonth:
 
     session.refresh(entry)
     return entry
+
+
+def get_published_month(session: Session, year: int, month: int) -> PublishedMonth | None:
+    return session.get(PublishedMonth, (year, month))

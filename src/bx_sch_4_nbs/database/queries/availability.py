@@ -1,4 +1,5 @@
 import calendar
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
 from sqlmodel import Session, col, select
@@ -87,3 +88,37 @@ def is_slot_allowed_for_size(slot_time: time, nail_size: NailSize | None) -> boo
 def is_slot_available(session: Session, slot_at: datetime, nail_size: NailSize | None) -> bool:
     studio_time = to_studio_time(slot_at)
     return slot_at in available_slots(session, studio_time.year, studio_time.month, nail_size)
+
+
+@dataclass
+class AgendaSlot:
+    time: time
+    is_open: bool
+    is_booked: bool
+
+
+def month_agenda(session: Session, year: int, month: int) -> dict[date, list[AgendaSlot]]:
+    """Every standard slot of a month as the clients see it: open or closed, booked or free."""
+    days_in_month = calendar.monthrange(year, month)[1]
+    first_day = date(year, month, 1)
+    last_day = date(year, month, days_in_month)
+
+    exceptions = get_exceptions(session, first_day, last_day)
+    booked = get_booked_slots(
+        session,
+        start=to_utc(datetime.combine(first_day, time.min)),
+        end=to_utc(datetime.combine(last_day + timedelta(days=1), time.min)),
+    )
+
+    agenda: dict[date, list[AgendaSlot]] = {}
+    for day_number in range(days_in_month):
+        day = first_day + timedelta(days=day_number)
+        agenda[day] = [
+            AgendaSlot(
+                time=slot_time,
+                is_open=is_open_for_clients(day, slot_time, exceptions),
+                is_booked=to_utc(datetime.combine(day, slot_time)) in booked,
+            )
+            for slot_time in settings.appointment_slots
+        ]
+    return agenda
