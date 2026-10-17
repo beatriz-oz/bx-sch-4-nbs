@@ -32,3 +32,7 @@ class InvalidAttendanceTokenError(Exception):
 
 class AppointmentNotActiveError(Exception):
     pass
+
+
+class AppointmentTooEarlyError(Exception):
+    pass

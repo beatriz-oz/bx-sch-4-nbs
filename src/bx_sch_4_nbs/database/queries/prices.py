@@ -100,6 +100,34 @@ def _addon_price(session: Session, addon: Addon) -> Decimal:
     return price.amount
 
 
+def calculate_price(
+    session: Session,
+    *,
+    service: Service,
+    nail_size: NailSize | None,
+    nail_art_level: NailArtLevel | None,
+    broken_nails: int = 0,
+    extra_charms: int = 0,
+    complete_removal: bool = False,
+) -> Decimal:
+    if service == Service.REMOVAL:
+        return _service_price(session, service, None)
+
+    if nail_size is None or nail_art_level is None:
+        raise ValueError("Nail size and nail art level are required for this service.")
+
+    total = (
+        _service_price(session, service, nail_size)
+        + _nail_art_price(session, nail_art_level)
+        + _addon_price(session, Addon.BROKEN_NAIL) * broken_nails
+        + _addon_price(session, Addon.EXTRA_CHARM) * extra_charms
+    )
+    if complete_removal:
+        total += _service_price(session, Service.REMOVAL, None)
+
+    return total
+
+
 def last_completed_appointment_at(session: Session, user_id: int) -> datetime | None:
     return session.exec(
         select(func.max(Appointment.scheduled_at)).where(
@@ -141,17 +169,16 @@ def estimate_price(
 ) -> Estimate:
     effective_service, note = resolve_service(session, user_id, service, scheduled_at)
 
-    if effective_service == Service.REMOVAL:
-        return Estimate(service=effective_service, estimated_price=_service_price(session, effective_service, None))
-
-    if nail_size is None or nail_art_level is None:
-        raise ValueError("Nail size and nail art level are required for this service.")
-
-    total = (
-        _service_price(session, effective_service, nail_size)
-        + _nail_art_price(session, nail_art_level)
-        + _addon_price(session, Addon.BROKEN_NAIL) * broken_nails
+    total = calculate_price(
+        session,
+        service=effective_service,
+        nail_size=nail_size,
+        nail_art_level=nail_art_level,
+        broken_nails=broken_nails,
     )
+
+    if effective_service == Service.REMOVAL:
+        return Estimate(service=effective_service, estimated_price=total)
 
     extras = []
     if has_other_professional_nails:

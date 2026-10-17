@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 
 from bx_sch_4_nbs.database.exceptions import (
     AppointmentNotActiveError,
+    AppointmentTooEarlyError,
     CancellationNotAllowedError,
     DuplicateResourceError,
     InvalidAttendanceTokenError,
@@ -90,7 +91,7 @@ async def handle_invalid_attendance_token(
     )
 
 
-async def handle_appointment_not_active(
+async def handle_appointment_not_ready(
     _: Request,
     error: Exception,
 ) -> JSONResponse:
@@ -130,5 +131,9 @@ def setup_exception_handlers(app: FastAPI) -> None:
     )
     app.add_exception_handler(
         AppointmentNotActiveError,
-        handle_appointment_not_active,
+        handle_appointment_not_ready,
+    )
+    app.add_exception_handler(
+        AppointmentTooEarlyError,
+        handle_appointment_not_ready,
     )

@@ -111,3 +111,21 @@ class AdminAppointmentResult(BaseModel):
 
 class StudioCancellation(BaseModel):
     message: str | None = Field(default=None, max_length=500)
+
+
+class AppointmentCompletion(BaseModel):
+    final_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+
+
+class FinalPriceDetails(BaseModel):
+    # Empty fields keep what was chosen when booking.
+    nail_size: NailSize | None = None
+    nail_art_level: NailArtLevel | None = None
+    broken_nails: int | None = Field(default=None, ge=0, le=10)
+    extra_charms: int = Field(default=0, ge=0, le=50)
+    complete_removal: bool = False
+
+
+class FinalPriceEstimate(BaseModel):
+    service: Service
+    price: Decimal
