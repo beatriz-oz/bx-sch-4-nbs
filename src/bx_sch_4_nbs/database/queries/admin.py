@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import or_
+from sqlalchemy import case, func, or_
 from sqlmodel import Session, col, select
 
 from bx_sch_4_nbs.config import settings
@@ -229,5 +229,107 @@ def search_clients(session: Session, search: str, limit: int) -> list[User]:
             .where(User.role == UserRole.USER, or_(*conditions))
             .order_by(col(User.name), col(User.last_name))
             .limit(limit)
+        ).all()
+    )
+
+
+# --- payments: pending deposits, refunds, cancellations ---
+
+RECENT_CANCELLATIONS_DAYS = 30
+
+
+def mark_deposit_refunded(session: Session, appointment_id: int, now: datetime) -> tuple[Appointment, User]:
+    appointment = session.get(Appointment, appointment_id)
+    if not appointment:
+        raise ResourceDoesNotExistError("The appointment does not exist")
+
+    user = session.get(User, appointment.user_id)
+    if not user:
+        raise ResourceDoesNotExistError("The user does not exist")
+
+    # Already marked: nothing to do (a double click must not change the date).
+    if appointment.deposit_refunded_at is not None:
+        return appointment, user
+
+    if not schedule.is_refund_due(appointment):
+        raise AppointmentNotActiveError("No refund is due for this appointment.")
+
+    appointment.deposit_refunded_at = now
+    session.add(appointment)
+    session.flush()
+    return appointment, user
+
+
+def pending_deposits(session: Session, now: datetime) -> list[tuple[Appointment, User]]:
+    """Upcoming appointments still waiting for the deposit (OTHER never needs one)."""
+    return list(
+        session.exec(
+            select(Appointment, User)
+            .join(User, col(Appointment.user_id) == col(User.id))
+            .where(
+                Appointment.status == AppointmentStatus.SCHEDULED,
+                Appointment.service != Service.OTHER,
+                col(Appointment.scheduled_at) > now,
+            )
+            .order_by(col(Appointment.scheduled_at))
+        ).all()
+    )
+
+
+def refunds_due(session: Session) -> list[tuple[Appointment, User]]:
+    """Cancelled appointments whose paid deposit must still be given back, the oldest first."""
+    return list(
+        session.exec(
+            select(Appointment, User)
+            .join(User, col(Appointment.user_id) == col(User.id))
+            .where(
+                Appointment.status == AppointmentStatus.CANCELLED,
+                col(Appointment.deposit_paid_at).is_not(None),
+                col(Appointment.cancellation_reason).in_(schedule.REFUNDABLE_REASONS),
+                col(Appointment.deposit_refunded_at).is_(None),
+            )
+            .order_by(col(Appointment.cancelled_at))
+        ).all()
+    )
+
+
+def recent_cancellations(session: Session, now: datetime) -> list[tuple[Appointment, User]]:
+    since = now - timedelta(days=RECENT_CANCELLATIONS_DAYS)
+    return list(
+        session.exec(
+            select(Appointment, User)
+            .join(User, col(Appointment.user_id) == col(User.id))
+            .where(Appointment.status == AppointmentStatus.CANCELLED, col(Appointment.cancelled_at) >= since)
+            .order_by(col(Appointment.cancelled_at).desc())
+        ).all()
+    )
+
+
+# --- clients ---
+
+
+def clients_overview(
+    session: Session, *, registered: bool, now: datetime
+) -> list[tuple[User, int, datetime | None, datetime | None]]:
+    """
+    The clients with password (registered) or without (pending), each with the number of
+    completed visits, the last visit and the next appointment. One query with LEFT JOIN,
+    so clients who never booked are listed too.
+    """
+    completed = col(Appointment.status) == AppointmentStatus.COMPLETED
+    upcoming = col(Appointment.status).in_(schedule.ACTIVE_STATUSES) & (col(Appointment.scheduled_at) > now)
+
+    return list(
+        session.exec(
+            select(
+                User,
+                func.count(case((completed, col(Appointment.id)))),
+                func.max(case((completed, col(Appointment.scheduled_at)))),
+                func.min(case((upcoming, col(Appointment.scheduled_at)))),
+            )
+            .join(Appointment, col(Appointment.user_id) == col(User.id), isouter=True)
+            .where(col(User.role) == UserRole.USER, col(User.is_active).is_(registered))
+            .group_by(col(User.id))
+            .order_by(col(User.name), col(User.last_name))
         ).all()
     )

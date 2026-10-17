@@ -1,10 +1,11 @@
 import calendar
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 
 from bx_sch_4_nbs.database.helpers import DatabaseSession
+from bx_sch_4_nbs.database.models import Appointment, User
 from bx_sch_4_nbs.database.queries import (
     admin,
     availability,
@@ -30,7 +31,9 @@ from bx_sch_4_nbs.helpers.email import (
 from bx_sch_4_nbs.helpers.security import decrypt_email, decrypt_phone
 from bx_sch_4_nbs.routers.schemas.admin import (
     AdminAppointmentResult,
+    AdminPayments,
     AppointmentCompletion,
+    ClientOverview,
     ClientResult,
     FinalPriceDetails,
     FinalPriceEstimate,
@@ -54,9 +57,11 @@ from bx_sch_4_nbs.routers.schemas.responses import (
     AddonPriceResponse,
     AdminAppointmentListResponse,
     AdminAppointmentResponse,
+    AdminPaymentsResponse,
     AgendaMonthResponse,
     AvailabilityPreviewResponse,
     ClientListResponse,
+    ClientOverviewListResponse,
     FinalPriceEstimateResponse,
     MessageResponse,
     MonthPublishedResponse,
@@ -511,3 +516,67 @@ def book_appointment(
         )
 
     return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, client, now))
+
+
+@router.get(
+    "/payments", description="Pending deposits, refunds still to make and the cancellations of the last 30 days"
+)
+def get_payments(session: DatabaseSession) -> AdminPaymentsResponse:
+    now = utc_now()
+
+    def results(rows: list[tuple[Appointment, User]]) -> list[AdminAppointmentResult]:
+        return [AdminAppointmentResult.from_row(appointment, user, now) for appointment, user in rows]
+
+    return AdminPaymentsResponse(
+        status="OK",
+        detail=AdminPayments(
+            pending_deposits=results(admin.pending_deposits(session, now)),
+            refunds_due=results(admin.refunds_due(session)),
+            recent_cancellations=results(admin.recent_cancellations(session, now)),
+        ),
+    )
+
+
+@router.post(
+    "/appointments/{appointment_id}/refund",
+    description="Records that the studio gave the deposit back. Safe to repeat",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Appointment does not exist"},
+        status.HTTP_409_CONFLICT: {"description": "No refund is due for this appointment"},
+    },
+)
+def mark_deposit_refunded(session: DatabaseSession, appointment_id: int) -> AdminAppointmentResponse:
+    now = utc_now()
+    appointment, user = admin.mark_deposit_refunded(session, appointment_id, now)
+    return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, user, now))
+
+
+@router.get(
+    "/clients/overview",
+    description="All clients: registered (with password) or pending (without), with their visits",
+)
+def get_clients_overview(
+    session: DatabaseSession, group: Literal["registered", "pending"] = "registered"
+) -> ClientOverviewListResponse:
+    rows = admin.clients_overview(session, registered=group == "registered", now=utc_now())
+    results = []
+    for user, visits, last_visit, next_appointment in rows:
+        if user.id is None:
+            raise RuntimeError("Client without id.")
+        results.append(
+            ClientOverview(
+                id=user.id,
+                name=user.name,
+                last_name=user.last_name,
+                instagram=user.instagram,
+                email=decrypt_email(user.email_encrypted),
+                phone=decrypt_phone(user.phone_encrypted),
+                is_active=user.is_active,
+                email_verified=user.email_verified,
+                created_at=user.created_at,
+                visits=visits,
+                last_visit=last_visit,
+                next_appointment=next_appointment,
+            )
+        )
+    return ClientOverviewListResponse(status="OK", detail=results)

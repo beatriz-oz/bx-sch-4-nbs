@@ -92,7 +92,12 @@ def count_booked_slots(session: Session, day: date, slot_time: time | None) -> i
 
 
 def is_refund_due(appointment: Appointment) -> bool:
-    return appointment.deposit_paid_at is not None and appointment.cancellation_reason in REFUNDABLE_REASONS
+    """The deposit was paid, the cancellation gives it back, and the studio has not done it yet."""
+    return (
+        appointment.deposit_paid_at is not None
+        and appointment.cancellation_reason in REFUNDABLE_REASONS
+        and appointment.deposit_refunded_at is None
+    )
 
 
 def cancel_appointment(session: Session, appointment_id: int, user_id: int, accept_deposit_loss: bool) -> Appointment:

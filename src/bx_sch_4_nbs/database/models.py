@@ -118,6 +118,9 @@ class Appointment(SQLModel, table=True):
         nullable=True,
     )
     deposit_paid_at: datetime | None = Field(default=None, nullable=True)
+    deposit_refunded_at: datetime | None = Field(
+        default=None, description="When the studio gave the deposit back", nullable=True
+    )
     attendance_confirmed_at: datetime | None = Field(default=None, nullable=True)
     reminder_sent_at: datetime | None = Field(default=None, nullable=True)
     cancelled_at: datetime | None = Field(default=None, nullable=True)

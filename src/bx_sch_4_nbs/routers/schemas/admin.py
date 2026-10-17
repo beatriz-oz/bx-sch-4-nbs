@@ -65,6 +65,7 @@ class AdminAppointmentResult(BaseModel):
     created_at: StudioDatetime | None
     cancelled_at: StudioDatetime | None
     cancellation_reason: CancellationReason | None
+    deposit_refunded_at: StudioDatetime | None
     client: ClientSummary
     deposit_paid: bool
     attendance_confirmed: bool
@@ -103,6 +104,7 @@ class AdminAppointmentResult(BaseModel):
             created_at=appointment.created_at,
             cancelled_at=appointment.cancelled_at,
             cancellation_reason=appointment.cancellation_reason,
+            deposit_refunded_at=appointment.deposit_refunded_at,
             client=client,
             deposit_paid=deposit_paid,
             attendance_confirmed=attendance_confirmed,
@@ -183,3 +185,17 @@ class ClientResult(BaseModel):
     email: str
     phone: str
     is_active: bool
+
+
+class AdminPayments(BaseModel):
+    pending_deposits: list[AdminAppointmentResult]
+    refunds_due: list[AdminAppointmentResult]
+    recent_cancellations: list[AdminAppointmentResult]
+
+
+class ClientOverview(ClientResult):
+    email_verified: bool
+    created_at: StudioDatetime | None
+    visits: int
+    last_visit: StudioDatetime | None
+    next_appointment: StudioDatetime | None
