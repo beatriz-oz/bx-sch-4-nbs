@@ -82,6 +82,7 @@ class AppointmentResult(BaseModel):
     broken_nails: int
     has_other_professional_nails: bool
     estimated_price: Decimal
+    final_price: Decimal | None
     policies_accepted_at: StudioDatetime | None
     deposit_paid_at: StudioDatetime | None
     attendance_confirmed_at: StudioDatetime | None
