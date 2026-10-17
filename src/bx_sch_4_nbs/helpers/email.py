@@ -4,8 +4,26 @@ import smtplib
 from email.message import EmailMessage
 
 from bx_sch_4_nbs.config import settings
+from bx_sch_4_nbs.database.models import Appointment
+from bx_sch_4_nbs.database.types import Service
 
 logger = logging.getLogger(__name__)
+
+
+def booking_details(appointment: Appointment) -> str:
+    lines = [f"Service: {appointment.service.value}"]
+    if appointment.service == Service.OTHER and appointment.notes:
+        lines.append(f"Details: {appointment.notes}")
+    if appointment.nail_size is not None:
+        lines.append(f"Nail size: {appointment.nail_size.value}")
+    if appointment.nail_art_level is not None:
+        lines.append(f"Nail art: {appointment.nail_art_level.value}")
+    if appointment.broken_nails:
+        lines.append(f"Broken nails: {appointment.broken_nails}")
+    if appointment.has_other_professional_nails:
+        lines.append("Nails from another professional: complete removal needed")
+    lines.append(f"Estimated price: {appointment.estimated_price} €")
+    return "\n".join(lines)
 
 
 def _build_message(to: str, subject: str, body: str) -> EmailMessage:
@@ -232,5 +250,24 @@ def send_cancelled_by_studio_notification(to: str, when: str, deposit_paid: bool
             f"{deposit_status}\n\n"
             f"{message_text}"
             f"We would love to see you soon! You can book a new appointment at {settings.frontend_url}."
+        ),
+    )
+
+
+def send_booked_by_studio_notification(to: str, when: str, details: str, deposit_required: bool) -> None:
+    deposit_line = (
+        "To secure your appointment, the studio will contact you about the deposit.\n\n" if deposit_required else ""
+    )
+    send_email(
+        to=to,
+        subject=f"Your appointment on {when} - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            f"Nails by Scooby booked an appointment for you on {when} (Lisbon time).\n\n"
+            f"{details}\n\n"
+            f"{deposit_line}"
+            "Please read our booking policies, they apply to this appointment:\n"
+            f"{settings.frontend_url}/policies\n\n"
+            "If you do not recognize this appointment, please contact Nails by Scooby."
         ),
     )

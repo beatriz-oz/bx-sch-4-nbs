@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from bx_sch_4_nbs.database.models import Appointment, User
 from bx_sch_4_nbs.database.queries.schedule import is_deposit_overdue, is_refund_due
@@ -12,7 +12,7 @@ from bx_sch_4_nbs.database.types import (
     NailSize,
     Service,
 )
-from bx_sch_4_nbs.routers.schemas.types import InstagramHandle, StudioDatetime
+from bx_sch_4_nbs.routers.schemas.types import InstagramHandle, PhoneNumber, StudioDatetime, UtcDatetime
 
 
 class PreApprovedInstagramResult(BaseModel):
@@ -61,6 +61,7 @@ class AdminAppointmentResult(BaseModel):
     has_other_professional_nails: bool
     estimated_price: Decimal
     final_price: Decimal | None
+    notes: str | None
     created_at: StudioDatetime | None
     cancelled_at: StudioDatetime | None
     cancellation_reason: CancellationReason | None
@@ -98,6 +99,7 @@ class AdminAppointmentResult(BaseModel):
             has_other_professional_nails=appointment.has_other_professional_nails,
             estimated_price=appointment.estimated_price,
             final_price=appointment.final_price,
+            notes=appointment.notes,
             created_at=appointment.created_at,
             cancelled_at=appointment.cancelled_at,
             cancellation_reason=appointment.cancellation_reason,
@@ -129,3 +131,45 @@ class FinalPriceDetails(BaseModel):
 class FinalPriceEstimate(BaseModel):
     service: Service
     price: Decimal
+
+
+class NewClient(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=255)
+    last_name: str = Field(min_length=1, max_length=255)
+    email: EmailStr
+    phone: PhoneNumber
+    instagram: InstagramHandle | None = None
+
+
+class StudioAppointment(BaseModel):
+    # Not based on AppointmentDetails on purpose: the client rules (and the OTHER ban) do not apply here.
+    scheduled_at: UtcDatetime
+    service: Service
+    nail_size: NailSize | None = None
+    nail_art_level: NailArtLevel | None = None
+    broken_nails: int = Field(default=0, ge=0, le=10)
+    has_other_professional_nails: bool = False
+    estimated_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    notes: str | None = Field(default=None, max_length=1000)
+    user_id: int | None = None
+    new_client: NewClient | None = None
+
+    @model_validator(mode="after")
+    def validate_booking(self) -> StudioAppointment:
+        if (self.user_id is None) == (self.new_client is None):
+            raise ValueError("Send either user_id (an existing client) or new_client, not both.")
+
+        if self.service in (Service.REMOVAL, Service.OTHER):
+            if self.nail_size is not None or self.nail_art_level is not None or self.broken_nails:
+                raise ValueError(f"{self.service.value} does not take nail size, nail art level or broken nails.")
+        elif self.nail_size is None or self.nail_art_level is None:
+            raise ValueError("Nail size and nail art level are required for this service.")
+
+        if self.service == Service.OTHER and not (self.notes and self.notes.strip()):
+            raise ValueError("Describe the service in notes.")
+
+        # BookedSlot compares exact instants: without this, 13:00:00 and 13:00:30 would not collide.
+        self.scheduled_at = self.scheduled_at.replace(second=0, microsecond=0)
+        return self

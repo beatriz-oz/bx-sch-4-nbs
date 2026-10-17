@@ -38,7 +38,7 @@ def get_user_by_instagram(session: Session, instagram: str) -> User | None:
 def create_first_time_user(
     session: Session,
     *,
-    instagram: str,
+    instagram: str | None,
     name: str,
     last_name: str,
     email: str,

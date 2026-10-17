@@ -112,7 +112,11 @@ class Appointment(SQLModel, table=True):
     estimated_price: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
     final_price: Decimal | None = Field(default=None, sa_column=Column(Numeric(10, 2), nullable=True))
     policy_id: int = Field(foreign_key="policies.id", nullable=False, ondelete="RESTRICT")
-    policies_accepted_at: datetime = Field(nullable=False)
+    policies_accepted_at: datetime | None = Field(
+        default=None,
+        description="Empty when the studio booked it: the policies were sent by email, not accepted",
+        nullable=True,
+    )
     deposit_paid_at: datetime | None = Field(default=None, nullable=True)
     attendance_confirmed_at: datetime | None = Field(default=None, nullable=True)
     reminder_sent_at: datetime | None = Field(default=None, nullable=True)

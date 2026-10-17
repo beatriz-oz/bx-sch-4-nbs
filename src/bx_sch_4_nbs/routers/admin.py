@@ -17,11 +17,13 @@ from bx_sch_4_nbs.database.queries import (
 from bx_sch_4_nbs.database.queries import approved_list as queries
 from bx_sch_4_nbs.database.queries.admin import cancel_appointment_by_studio
 from bx_sch_4_nbs.database.queries.schedule import list_appointments
-from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize
+from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize, Service
 from bx_sch_4_nbs.helpers.authentication import CurrentAdmin, get_current_admin
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
 from bx_sch_4_nbs.helpers.email import (
+    booking_details,
     send_agenda_published,
+    send_booked_by_studio_notification,
     send_cancelled_by_studio_notification,
     send_deposit_confirmation,
 )
@@ -35,6 +37,7 @@ from bx_sch_4_nbs.routers.schemas.admin import (
     NewPreApprovedInstagram,
     PolicyResult,
     PreApprovedInstagramResult,
+    StudioAppointment,
     StudioCancellation,
 )
 from bx_sch_4_nbs.routers.schemas.appointments import AvailabilityPreview, AvailableDay
@@ -385,3 +388,68 @@ def mark_no_show(session: DatabaseSession, appointment_id: int) -> AdminAppointm
     now = utc_now()
     appointment, user = admin.mark_no_show(session, appointment_id, now)
     return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, user, now))
+
+
+@router.post(
+    "/appointments",
+    description=(
+        "Book an appointment for a client at any day and time (past included). "
+        "Send user_id for an existing client, or new_client to register a temporary one"
+    ),
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Client does not exist"},
+        status.HTTP_409_CONFLICT: {"description": "Time already booked, client already registered, or no policy"},
+    },
+)
+def book_appointment(
+    session: DatabaseSession, data: StudioAppointment, background_tasks: BackgroundTasks
+) -> AdminAppointmentResponse:
+    current_policy = policies.get_current_policy(session)
+    if current_policy is None or current_policy.id is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "No booking policy is published yet.")
+
+    if data.user_id is not None:
+        client = admin.get_client(session, data.user_id)
+    elif data.new_client is not None:
+        client = users.create_first_time_user(
+            session,
+            instagram=data.new_client.instagram,
+            name=data.new_client.name,
+            last_name=data.new_client.last_name,
+            email=data.new_client.email,
+            phone=data.new_client.phone,
+        )
+    else:
+        raise RuntimeError("StudioAppointment must have user_id or new_client.")
+
+    if client.id is None:
+        raise RuntimeError("Client without id.")
+
+    now = utc_now()
+    appointment = admin.book_appointment_by_studio(
+        session,
+        user_id=client.id,
+        scheduled_at=data.scheduled_at,
+        service=data.service,
+        nail_size=data.nail_size,
+        nail_art_level=data.nail_art_level,
+        broken_nails=data.broken_nails,
+        has_other_professional_nails=data.has_other_professional_nails,
+        estimated_price=data.estimated_price,
+        notes=data.notes,
+        policy_id=current_policy.id,
+        now=now,
+    )
+
+    # Squeeze-ins and past bookings get no email: the manicure has just talked to the client.
+    if not admin.is_within_reminder_window(appointment.scheduled_at, now):
+        background_tasks.add_task(
+            send_booked_by_studio_notification,
+            decrypt_email(client.email_encrypted),
+            to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
+            booking_details(appointment),
+            appointment.service != Service.OTHER,
+        )
+
+    return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, client, now))

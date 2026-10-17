@@ -10,6 +10,7 @@ class Service(str, Enum):
     APPLICATION = "Application"
     MAINTENANCE = "Maintenance"
     REMOVAL = "Removal"
+    OTHER = "Other"
 
 
 class NailSize(str, Enum):

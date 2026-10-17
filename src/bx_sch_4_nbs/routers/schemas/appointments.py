@@ -38,6 +38,8 @@ class AppointmentDetails(BaseModel):
 
     @model_validator(mode="after")
     def validate_service_fields(self) -> AppointmentDetails:
+        if self.service == Service.OTHER:
+            raise ValueError("This service can only be booked by the studio.")
         if self.service == Service.REMOVAL:
             if self.nail_size is not None or self.nail_art_level is not None or self.broken_nails:
                 raise ValueError("Removal does not take nail size, nail art level or broken nails.")
@@ -80,7 +82,7 @@ class AppointmentResult(BaseModel):
     broken_nails: int
     has_other_professional_nails: bool
     estimated_price: Decimal
-    policies_accepted_at: StudioDatetime
+    policies_accepted_at: StudioDatetime | None
     deposit_paid_at: StudioDatetime | None
     attendance_confirmed_at: StudioDatetime | None
     cancelled_at: StudioDatetime | None

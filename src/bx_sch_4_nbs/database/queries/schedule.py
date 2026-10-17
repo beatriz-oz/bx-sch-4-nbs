@@ -143,6 +143,9 @@ def create_appointment(
     has_other_professional_nails: bool,
     estimated_price: Decimal,
     policy_id: int,
+    policies_accepted_at: datetime | None,
+    notes: str | None = None,
+    attendance_confirmed_at: datetime | None = None,
 ) -> Appointment:
     appointment = Appointment(
         user_id=user_id,
@@ -155,7 +158,9 @@ def create_appointment(
         has_other_professional_nails=has_other_professional_nails,
         estimated_price=estimated_price,
         policy_id=policy_id,
-        policies_accepted_at=utc_now(),
+        policies_accepted_at=policies_accepted_at,
+        notes=notes,
+        attendance_confirmed_at=attendance_confirmed_at,
     )
     session.add(appointment)
     session.flush()
@@ -179,6 +184,8 @@ def appointments_needing_reminder(session: Session, now: datetime) -> list[Appoi
             select(Appointment).where(
                 col(Appointment.status).in_(ACTIVE_STATUSES),
                 col(Appointment.reminder_sent_at).is_(None),
+                # Squeeze-ins booked by the studio are born confirmed: no need to ask again.
+                col(Appointment.attendance_confirmed_at).is_(None),
                 col(Appointment.scheduled_at) > now,
                 col(Appointment.scheduled_at) <= now + timedelta(hours=settings.reminder_hours_before),
             )
@@ -257,7 +264,7 @@ def is_deposit_overdue(appointment: Appointment, now: datetime) -> bool:
     scheduled = AppointmentStatus.SCHEDULED
     limit = now - timedelta(days=settings.deposit_overdue_days)
 
-    if not appointment.created_at:
+    if not appointment.created_at or appointment.service == Service.OTHER:
         return False
 
     return appointment.status == scheduled and appointment.created_at < limit

@@ -110,6 +110,10 @@ def calculate_price(
     extra_charms: int = 0,
     complete_removal: bool = False,
 ) -> Decimal:
+    if service == Service.OTHER:
+        # The studio sets the price of OTHER; callers must handle it before calling this.
+        raise ValueError("There is no price table for this service.")
+
     if service == Service.REMOVAL:
         return _service_price(session, service, None)
 

@@ -4,12 +4,12 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.helpers import DatabaseSession
-from bx_sch_4_nbs.database.models import Appointment
 from bx_sch_4_nbs.database.queries import availability, policies, prices, schedule
 from bx_sch_4_nbs.database.types import NailSize
 from bx_sch_4_nbs.helpers.authentication import CurrentUser, read_attendance_token
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
 from bx_sch_4_nbs.helpers.email import (
+    booking_details,
     send_cancelled_appointment_notification,
     send_cancelled_appointment_notification_client,
     send_new_appointment_notification,
@@ -36,20 +36,6 @@ from bx_sch_4_nbs.routers.schemas.responses import (
 )
 
 router = APIRouter(prefix="/appointments", tags=["Appointments"])
-
-
-def _booking_details(appointment: Appointment) -> str:
-    lines = [f"Service: {appointment.service.value}"]
-    if appointment.nail_size is not None:
-        lines.append(f"Nail size: {appointment.nail_size.value}")
-    if appointment.nail_art_level is not None:
-        lines.append(f"Nail art: {appointment.nail_art_level.value}")
-    if appointment.broken_nails:
-        lines.append(f"Broken nails: {appointment.broken_nails}")
-    if appointment.has_other_professional_nails:
-        lines.append("Nails from another professional: complete removal needed")
-    lines.append(f"Estimated price: {appointment.estimated_price} €")
-    return "\n".join(lines)
 
 
 @router.get(
@@ -199,6 +185,7 @@ def create_new_appointment(
         has_other_professional_nails=data.has_other_professional_nails,
         estimated_price=estimate.estimated_price,
         policy_id=current_policy.id,
+        policies_accepted_at=utc_now(),
     )
 
     background_tasks.add_task(
@@ -207,7 +194,7 @@ def create_new_appointment(
         user.instagram,
         f"{user.name} {user.last_name}",
         to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
-        _booking_details(appointment),
+        booking_details(appointment),
     )
 
     return NewAppointmentResponse(

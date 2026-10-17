@@ -1,8 +1,9 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlmodel import Session
 
+from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.exceptions import (
     AppointmentNotActiveError,
     AppointmentTooEarlyError,
@@ -11,7 +12,14 @@ from bx_sch_4_nbs.database.exceptions import (
 )
 from bx_sch_4_nbs.database.models import Appointment, User
 from bx_sch_4_nbs.database.queries import prices, schedule
-from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, NailArtLevel, NailSize, Service
+from bx_sch_4_nbs.database.types import (
+    AppointmentStatus,
+    CancellationReason,
+    NailArtLevel,
+    NailSize,
+    Service,
+    UserRole,
+)
 
 
 def confirm_deposit(session: Session, appointment_id: int, now: datetime) -> tuple[Appointment, User, bool]:
@@ -135,6 +143,9 @@ def estimate_final_price(
     if not appointment:
         raise ResourceDoesNotExistError("The appointment does not exist")
 
+    if appointment.service == Service.OTHER:
+        return appointment.service, appointment.estimated_price
+
     # What was not changed in the form keeps the value chosen when booking.
     price = prices.calculate_price(
         session,
@@ -147,3 +158,50 @@ def estimate_final_price(
     )
 
     return appointment.service, price
+
+
+def get_client(session: Session, user_id: int) -> User:
+    user = session.get(User, user_id)
+    if user is None or user.role != UserRole.USER:
+        raise ResourceDoesNotExistError("The client does not exist")
+    return user
+
+
+def is_within_reminder_window(scheduled_at: datetime, now: datetime) -> bool:
+    # Also true for the past: those bookings get no reminder and no welcome email.
+    return scheduled_at <= now + timedelta(hours=settings.reminder_hours_before)
+
+
+def book_appointment_by_studio(
+    session: Session,
+    *,
+    user_id: int,
+    scheduled_at: datetime,
+    service: Service,
+    nail_size: NailSize | None,
+    nail_art_level: NailArtLevel | None,
+    broken_nails: int,
+    has_other_professional_nails: bool,
+    estimated_price: Decimal,
+    notes: str | None,
+    policy_id: int,
+    now: datetime,
+) -> Appointment:
+    # A squeeze-in was just agreed with the client, so attendance is already confirmed.
+    is_squeeze_in = now < scheduled_at and is_within_reminder_window(scheduled_at, now)
+
+    return schedule.create_appointment(
+        session,
+        user_id=user_id,
+        scheduled_at=scheduled_at,
+        service=service,
+        nail_size=nail_size,
+        nail_art_level=nail_art_level,
+        broken_nails=broken_nails,
+        has_other_professional_nails=has_other_professional_nails,
+        estimated_price=estimated_price,
+        policy_id=policy_id,
+        policies_accepted_at=None,
+        notes=notes,
+        attendance_confirmed_at=now if is_squeeze_in else None,
+    )
