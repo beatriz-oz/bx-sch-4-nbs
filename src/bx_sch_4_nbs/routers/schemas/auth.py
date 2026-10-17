@@ -53,3 +53,8 @@ class UserResult(BaseModel):
     role: UserRole
     is_active: bool
     email_verified: bool
+    wants_agenda_emails: bool
+
+
+class ProfileUpdate(BaseModel):
+    wants_agenda_emails: bool

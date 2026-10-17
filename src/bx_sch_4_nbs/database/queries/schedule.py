@@ -268,3 +268,11 @@ def is_deposit_overdue(appointment: Appointment, now: datetime) -> bool:
         return False
 
     return appointment.status == scheduled and appointment.created_at < limit
+
+
+def list_user_appointments(session: Session, user_id: int) -> list[Appointment]:
+    return list(
+        session.exec(
+            select(Appointment).where(Appointment.user_id == user_id).order_by(col(Appointment.scheduled_at).desc())
+        ).all()
+    )

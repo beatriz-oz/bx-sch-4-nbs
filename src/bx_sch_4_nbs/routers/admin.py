@@ -27,10 +27,11 @@ from bx_sch_4_nbs.helpers.email import (
     send_cancelled_by_studio_notification,
     send_deposit_confirmation,
 )
-from bx_sch_4_nbs.helpers.security import decrypt_email
+from bx_sch_4_nbs.helpers.security import decrypt_email, decrypt_phone
 from bx_sch_4_nbs.routers.schemas.admin import (
     AdminAppointmentResult,
     AppointmentCompletion,
+    ClientResult,
     FinalPriceDetails,
     FinalPriceEstimate,
     NewPolicy,
@@ -54,6 +55,7 @@ from bx_sch_4_nbs.routers.schemas.responses import (
     AdminAppointmentListResponse,
     AdminAppointmentResponse,
     AvailabilityPreviewResponse,
+    ClientListResponse,
     FinalPriceEstimateResponse,
     MessageResponse,
     MonthPublishedResponse,
@@ -388,6 +390,30 @@ def mark_no_show(session: DatabaseSession, appointment_id: int) -> AdminAppointm
     now = utc_now()
     appointment, user = admin.mark_no_show(session, appointment_id, now)
     return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, user, now))
+
+
+@router.get("/clients", description="Search clients by name, Instagram, exact email or exact phone")
+def search_clients(
+    session: DatabaseSession,
+    search: Annotated[str, Query(min_length=2, max_length=255)],
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> ClientListResponse:
+    results = []
+    for user in admin.search_clients(session, search, limit):
+        if user.id is None:
+            raise RuntimeError("Client without id.")
+        results.append(
+            ClientResult(
+                id=user.id,
+                name=user.name,
+                last_name=user.last_name,
+                instagram=user.instagram,
+                email=decrypt_email(user.email_encrypted),
+                phone=decrypt_phone(user.phone_encrypted),
+                is_active=user.is_active,
+            )
+        )
+    return ClientListResponse(status="OK", detail=results)
 
 
 @router.post(

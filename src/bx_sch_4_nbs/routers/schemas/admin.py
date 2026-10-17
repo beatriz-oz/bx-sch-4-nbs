@@ -173,3 +173,13 @@ class StudioAppointment(BaseModel):
         # BookedSlot compares exact instants: without this, 13:00:00 and 13:00:30 would not collide.
         self.scheduled_at = self.scheduled_at.replace(second=0, microsecond=0)
         return self
+
+
+class ClientResult(BaseModel):
+    id: int
+    name: str
+    last_name: str
+    instagram: str | None
+    email: str
+    phone: str
+    is_active: bool

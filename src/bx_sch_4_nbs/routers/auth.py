@@ -16,6 +16,7 @@ from bx_sch_4_nbs.routers.schemas.auth import (
     CheckInVerify,
     CodeSent,
     Login,
+    ProfileUpdate,
     TokenResult,
     UserResult,
 )
@@ -167,8 +168,7 @@ def login(session: DatabaseSession, data: Login) -> TokenResponse:
         return token_response(user)
 
 
-@router.get("/me", description="Data of the logged-in user")
-def me(user: CurrentUser) -> UserResponse:
+def user_result(user: User) -> UserResult:
     if user.id is None:
         raise HTTPException(
             status.HTTP_401_UNAUTHORIZED,
@@ -176,17 +176,26 @@ def me(user: CurrentUser) -> UserResponse:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return UserResponse(
-        status="OK",
-        detail=UserResult(
-            id=user.id,
-            name=user.name,
-            last_name=user.last_name,
-            instagram=user.instagram,
-            email=decrypt_email(user.email_encrypted),
-            phone=decrypt_phone(user.phone_encrypted),
-            role=user.role,
-            is_active=user.is_active,
-            email_verified=user.email_verified,
-        ),
+    return UserResult(
+        id=user.id,
+        name=user.name,
+        last_name=user.last_name,
+        instagram=user.instagram,
+        email=decrypt_email(user.email_encrypted),
+        phone=decrypt_phone(user.phone_encrypted),
+        role=user.role,
+        is_active=user.is_active,
+        email_verified=user.email_verified,
+        wants_agenda_emails=user.wants_agenda_emails,
     )
+
+
+@router.get("/me", description="Data of the logged-in user")
+def me(user: CurrentUser) -> UserResponse:
+    return UserResponse(status="OK", detail=user_result(user))
+
+
+@router.patch("/me", description="Update your preferences (e.g. stop the 'agenda is open' emails)")
+def update_me(session: DatabaseSession, user: CurrentUser, data: ProfileUpdate) -> UserResponse:
+    users.set_agenda_emails(session, user, data.wants_agenda_emails)
+    return UserResponse(status="OK", detail=user_result(user))

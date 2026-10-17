@@ -28,6 +28,7 @@ from bx_sch_4_nbs.routers.schemas.appointments import (
     PossibleExtraResult,
 )
 from bx_sch_4_nbs.routers.schemas.responses import (
+    AppointmentListResponse,
     AppointmentResponse,
     AvailabilityResponse,
     CancellationResponse,
@@ -204,4 +205,15 @@ def create_new_appointment(
             possible_extras=[PossibleExtraResult.model_validate(extra) for extra in estimate.possible_extras],
             note=estimate.note,
         ),
+    )
+
+
+@router.get("", description="Your appointments, most recent first")
+def get_my_appointments(session: DatabaseSession, user: CurrentUser) -> AppointmentListResponse:
+    if user.id is None:
+        raise RuntimeError("Authenticated user without id.")
+
+    appointments = schedule.list_user_appointments(session, user.id)
+    return AppointmentListResponse(
+        status="OK", detail=[AppointmentResult.model_validate(appointment) for appointment in appointments]
     )

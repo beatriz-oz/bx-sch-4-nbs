@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
 from decimal import Decimal
 
-from sqlmodel import Session
+from sqlalchemy import or_
+from sqlmodel import Session, col, select
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.exceptions import (
@@ -20,6 +21,7 @@ from bx_sch_4_nbs.database.types import (
     Service,
     UserRole,
 )
+from bx_sch_4_nbs.helpers.security import hash_email, hash_phone, normalize_phone
 
 
 def confirm_deposit(session: Session, appointment_id: int, now: datetime) -> tuple[Appointment, User, bool]:
@@ -204,4 +206,28 @@ def book_appointment_by_studio(
         policies_accepted_at=None,
         notes=notes,
         attendance_confirmed_at=now if is_squeeze_in else None,
+    )
+
+
+def search_clients(session: Session, search: str, limit: int) -> list[User]:
+    term = search.strip().lstrip("@")
+    conditions = [
+        col(User.name).contains(term),
+        col(User.last_name).contains(term),
+        col(User.instagram).contains(term.lower()),
+        col(User.email_hash) == hash_email(term),
+    ]
+    # Phone and email are encrypted, so they can only be found by their exact hash.
+    try:
+        conditions.append(col(User.phone_hash) == hash_phone(normalize_phone(term)))
+    except ValueError:
+        pass
+
+    return list(
+        session.exec(
+            select(User)
+            .where(User.role == UserRole.USER, or_(*conditions))
+            .order_by(col(User.name), col(User.last_name))
+            .limit(limit)
+        ).all()
     )

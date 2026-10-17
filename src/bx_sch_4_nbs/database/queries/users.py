@@ -93,3 +93,9 @@ def list_agenda_subscribers(session: Session) -> list[User]:
             )
         ).all()
     )
+
+
+def set_agenda_emails(session: Session, user: User, wants_agenda_emails: bool) -> None:
+    user.wants_agenda_emails = wants_agenda_emails
+    session.add(user)
+    session.flush()
