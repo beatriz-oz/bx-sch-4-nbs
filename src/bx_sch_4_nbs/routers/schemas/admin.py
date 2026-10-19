@@ -62,6 +62,7 @@ class AdminAppointmentResult(BaseModel):
     estimated_price: Decimal
     final_price: Decimal | None
     notes: str | None
+    completion_notes: str | None
     created_at: StudioDatetime | None
     cancelled_at: StudioDatetime | None
     cancellation_reason: CancellationReason | None
@@ -102,6 +103,7 @@ class AdminAppointmentResult(BaseModel):
             estimated_price=appointment.estimated_price,
             final_price=appointment.final_price,
             notes=appointment.notes,
+            completion_notes=appointment.completion_notes,
             created_at=appointment.created_at,
             cancelled_at=appointment.cancelled_at,
             cancellation_reason=appointment.cancellation_reason,
@@ -123,6 +125,7 @@ class AppointmentCompletion(BaseModel):
     final_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     # How long it really took; empty keeps the expected duration of the service.
     duration_minutes: int | None = Field(default=None, ge=15, le=600)
+    notes: str | None = Field(default=None, max_length=2000)
 
 
 class FinalPriceDetails(BaseModel):

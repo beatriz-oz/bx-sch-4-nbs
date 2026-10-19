@@ -135,11 +135,15 @@ def complete(appointment_id: int, body: dict[str, Any]):
     return client.post(f"/v1/admin/appointments/{appointment_id}/complete", json=body, headers=ADMIN)
 
 
-response = complete(recorded, {"final_price": "50", "duration_minutes": 195})
+response = complete(recorded, {"final_price": "50", "duration_minutes": 195, "notes": "  Chrome, loved it  "})
 check(
     "concluir com duracao: grava 195",
     response.status_code == 200 and response.json()["detail"]["duration_minutes"] == 195,
     response.text[:200],
+)
+check(
+    "notas da conclusao gravadas (sem espacos sobrando)",
+    response.json().get("detail", {}).get("completion_notes") == "Chrome, loved it",
 )
 response = complete(default, {"final_price": "35"})
 check(
@@ -147,6 +151,7 @@ check(
     response.json().get("detail", {}).get("duration_minutes") == 150,
     response.text[:200],
 )
+check("sem notas: fica vazio", response.json().get("detail", {}).get("completion_notes") is None)
 check("duracao absurda: 422", complete(invalid, {"final_price": "35", "duration_minutes": 5}).status_code == 422)
 check("ano invalido: 422", client.get("/v1/admin/reports", params={"year": 1999}, headers=ADMIN).status_code == 422)
 check("sem login: 401", client.get("/v1/admin/reports", params={"year": 2031}).status_code == 401)

@@ -108,13 +108,19 @@ def _get_appointment_to_finish(session: Session, appointment_id: int, now: datet
 
 
 def complete_appointment(
-    session: Session, appointment_id: int, final_price: Decimal, duration_minutes: int | None, now: datetime
+    session: Session,
+    appointment_id: int,
+    final_price: Decimal,
+    duration_minutes: int | None,
+    completion_notes: str | None,
+    now: datetime,
 ) -> tuple[Appointment, User]:
     appointment, user = _get_appointment_to_finish(session, appointment_id, now)
 
     appointment.status = AppointmentStatus.COMPLETED
     appointment.final_price = final_price
     appointment.duration_minutes = duration_minutes
+    appointment.completion_notes = completion_notes
     session.add(appointment)
     session.flush()
 

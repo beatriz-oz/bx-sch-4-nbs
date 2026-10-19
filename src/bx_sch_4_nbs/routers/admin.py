@@ -417,8 +417,9 @@ def complete_appointment(
     session: DatabaseSession, appointment_id: int, data: AppointmentCompletion
 ) -> AdminAppointmentResponse:
     now = utc_now()
+    notes = (data.notes or "").strip() or None
     appointment, user = admin.complete_appointment(
-        session, appointment_id, data.final_price, data.duration_minutes, now
+        session, appointment_id, data.final_price, data.duration_minutes, notes, now
     )
     return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, user, now))
 
