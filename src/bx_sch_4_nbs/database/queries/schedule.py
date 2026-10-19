@@ -91,6 +91,11 @@ def count_booked_slots(session: Session, day: date, slot_time: time | None) -> i
     return session.exec(select(func.count()).select_from(BookedSlot).where(col(BookedSlot.slot_at).in_(instants))).one()
 
 
+def duration_minutes(appointment: Appointment) -> int:
+    """The real duration when it was recorded, otherwise the expected one for the service."""
+    return appointment.duration_minutes or settings.service_durations_minutes[appointment.service]
+
+
 def is_refund_due(appointment: Appointment) -> bool:
     """The deposit was paid, the cancellation gives it back, and the studio has not done it yet."""
     return (

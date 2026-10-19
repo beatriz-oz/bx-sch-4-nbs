@@ -4,6 +4,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 
+from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.helpers import DatabaseSession
 from bx_sch_4_nbs.database.models import Appointment, User
 from bx_sch_4_nbs.database.queries import (
@@ -12,6 +13,7 @@ from bx_sch_4_nbs.database.queries import (
     policies,
     prices,
     published_months,
+    reports,
     schedule,
     users,
 )
@@ -37,12 +39,15 @@ from bx_sch_4_nbs.routers.schemas.admin import (
     ClientResult,
     FinalPriceDetails,
     FinalPriceEstimate,
+    MonthReportResult,
     NewPolicy,
     NewPreApprovedInstagram,
     PolicyResult,
     PreApprovedInstagramResult,
+    ServiceReport,
     StudioAppointment,
     StudioCancellation,
+    YearReport,
 )
 from bx_sch_4_nbs.routers.schemas.appointments import AvailabilityPreview, AvailableDay
 from bx_sch_4_nbs.routers.schemas.prices import (
@@ -73,6 +78,7 @@ from bx_sch_4_nbs.routers.schemas.responses import (
     ScheduleExceptionListResponse,
     ScheduleExceptionResponse,
     ServicePriceResponse,
+    YearReportResponse,
 )
 from bx_sch_4_nbs.routers.schemas.schedule import (
     AgendaDay,
@@ -411,7 +417,9 @@ def complete_appointment(
     session: DatabaseSession, appointment_id: int, data: AppointmentCompletion
 ) -> AdminAppointmentResponse:
     now = utc_now()
-    appointment, user = admin.complete_appointment(session, appointment_id, data.final_price, now)
+    appointment, user = admin.complete_appointment(
+        session, appointment_id, data.final_price, data.duration_minutes, now
+    )
     return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, user, now))
 
 
@@ -580,3 +588,36 @@ def get_clients_overview(
             )
         )
     return ClientOverviewListResponse(status="OK", detail=results)
+
+
+@router.get(
+    "/reports",
+    description="Month by month in a year (Lisbon time): completed appointments, hours worked and income",
+)
+def get_year_report(session: DatabaseSession, year: Annotated[int, Query(ge=2026, le=2100)]) -> YearReportResponse:
+    months = [
+        MonthReportResult(
+            month=report.month,
+            completed=report.completed,
+            worked_minutes=report.worked_minutes,
+            services_revenue=report.services_revenue,
+            kept_deposits=report.kept_deposits,
+            kept_deposits_revenue=report.kept_deposits_revenue,
+            total_revenue=report.total_revenue,
+            no_shows=report.no_shows,
+            cancellations=report.cancellations,
+            by_service=[
+                ServiceReport(
+                    service=service,
+                    completed=totals.completed,
+                    worked_minutes=totals.worked_minutes,
+                    revenue=totals.revenue,
+                )
+                for service, totals in report.by_service.items()
+            ],
+        )
+        for report in reports.year_report(session, year)
+    ]
+    return YearReportResponse(
+        status="OK", detail=YearReport(year=year, deposit_amount=settings.deposit_amount, months=months)
+    )

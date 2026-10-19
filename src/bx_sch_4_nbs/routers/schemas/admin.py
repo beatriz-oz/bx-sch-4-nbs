@@ -4,7 +4,7 @@ from decimal import Decimal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from bx_sch_4_nbs.database.models import Appointment, User
-from bx_sch_4_nbs.database.queries.schedule import is_deposit_overdue, is_refund_due
+from bx_sch_4_nbs.database.queries.schedule import duration_minutes, is_deposit_overdue, is_refund_due
 from bx_sch_4_nbs.database.types import (
     AppointmentStatus,
     CancellationReason,
@@ -66,6 +66,7 @@ class AdminAppointmentResult(BaseModel):
     cancelled_at: StudioDatetime | None
     cancellation_reason: CancellationReason | None
     deposit_refunded_at: StudioDatetime | None
+    duration_minutes: int
     client: ClientSummary
     deposit_paid: bool
     attendance_confirmed: bool
@@ -105,6 +106,7 @@ class AdminAppointmentResult(BaseModel):
             cancelled_at=appointment.cancelled_at,
             cancellation_reason=appointment.cancellation_reason,
             deposit_refunded_at=appointment.deposit_refunded_at,
+            duration_minutes=duration_minutes(appointment),
             client=client,
             deposit_paid=deposit_paid,
             attendance_confirmed=attendance_confirmed,
@@ -119,6 +121,8 @@ class StudioCancellation(BaseModel):
 
 class AppointmentCompletion(BaseModel):
     final_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    # How long it really took; empty keeps the expected duration of the service.
+    duration_minutes: int | None = Field(default=None, ge=15, le=600)
 
 
 class FinalPriceDetails(BaseModel):
@@ -199,3 +203,29 @@ class ClientOverview(ClientResult):
     visits: int
     last_visit: StudioDatetime | None
     next_appointment: StudioDatetime | None
+
+
+class ServiceReport(BaseModel):
+    service: Service
+    completed: int
+    worked_minutes: int
+    revenue: Decimal
+
+
+class MonthReportResult(BaseModel):
+    month: int
+    completed: int
+    worked_minutes: int
+    services_revenue: Decimal
+    kept_deposits: int
+    kept_deposits_revenue: Decimal
+    total_revenue: Decimal
+    no_shows: int
+    cancellations: int
+    by_service: list[ServiceReport]
+
+
+class YearReport(BaseModel):
+    year: int
+    deposit_amount: Decimal
+    months: list[MonthReportResult]

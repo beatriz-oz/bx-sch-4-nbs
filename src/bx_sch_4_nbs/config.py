@@ -1,8 +1,9 @@
 from datetime import time
+from decimal import Decimal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from bx_sch_4_nbs.database.types import NailSize
+from bx_sch_4_nbs.database.types import NailSize, Service
 
 
 class Settings(BaseSettings):
@@ -32,6 +33,16 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:4200"
     min_booking_advance_hours: int = 24
     deposit_overdue_days: int = 2
+    # Expected duration of each service, in minutes: draws the agenda and counts the hours
+    # worked when the real duration was not recorded at completion.
+    service_durations_minutes: dict[Service, int] = {
+        Service.APPLICATION: 180,
+        Service.MAINTENANCE: 150,
+        Service.REMOVAL: 60,
+        Service.OTHER: 60,
+    }
+    # The deposit (also written in the policies). Counted as income when the studio keeps it.
+    deposit_amount: Decimal = Decimal("10.00")
 
     model_config = SettingsConfigDict(env_file=".env")
 

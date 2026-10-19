@@ -111,6 +111,9 @@ class Appointment(SQLModel, table=True):
     has_other_professional_nails: bool = Field(default=False, nullable=False)
     estimated_price: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
     final_price: Decimal | None = Field(default=None, sa_column=Column(Numeric(10, 2), nullable=True))
+    duration_minutes: int | None = Field(
+        default=None, description="Real duration, recorded when the appointment is completed", nullable=True
+    )
     policy_id: int = Field(foreign_key="policies.id", nullable=False, ondelete="RESTRICT")
     policies_accepted_at: datetime | None = Field(
         default=None,
