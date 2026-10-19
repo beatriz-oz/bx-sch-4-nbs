@@ -82,6 +82,11 @@ class User(SQLModel, table=True):
         default=True,
         nullable=False,
     )
+    approved_at: datetime | None = Field(
+        description="When the studio allowed this client to come back (create a password); empty = not allowed",
+        default=None,
+        nullable=True,
+    )
 
 
 class PreApprovedInstagram(SQLModel, table=True):

@@ -103,6 +103,7 @@ def create_clients(session: Session, now: datetime) -> list[User]:
             password_hash=password_hash if registered else None,
             is_active=registered,
             email_verified=registered or index % 2 == 0,
+            approved_at=now - timedelta(days=30) if registered or handle == "mari.ribeiro" else None,
             created_at=now - timedelta(days=150 - index * 7),
         )
         session.add(user)

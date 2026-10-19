@@ -114,8 +114,13 @@ def complete_appointment(
     duration_minutes: int | None,
     completion_notes: str | None,
     now: datetime,
+    approve_client: bool = False,
 ) -> tuple[Appointment, User]:
     appointment, user = _get_appointment_to_finish(session, appointment_id, now)
+
+    if approve_client and user.approved_at is None:
+        user.approved_at = now
+        session.add(user)
 
     appointment.status = AppointmentStatus.COMPLETED
     appointment.final_price = final_price
@@ -338,5 +343,26 @@ def clients_overview(
             .where(col(User.role) == UserRole.USER, col(User.is_active).is_(registered))
             .group_by(col(User.id))
             .order_by(col(User.name), col(User.last_name))
+        ).all()
+    )
+
+
+def set_client_approval(session: Session, user_id: int, approved: bool, now: datetime) -> User:
+    """Allows (or no longer allows) a client to come back, i.e. to create a password."""
+    user = get_client(session, user_id)
+    if approved and user.approved_at is None:
+        user.approved_at = now
+    elif not approved:
+        user.approved_at = None
+    session.add(user)
+    session.flush()
+    return user
+
+
+def client_appointments(session: Session, user_id: int) -> list[Appointment]:
+    """All her appointments, the most recent first."""
+    return list(
+        session.exec(
+            select(Appointment).where(Appointment.user_id == user_id).order_by(col(Appointment.scheduled_at).desc())
         ).all()
     )

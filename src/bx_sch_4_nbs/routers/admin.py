@@ -1,5 +1,6 @@
 import calendar
-from datetime import date
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
@@ -35,7 +36,9 @@ from bx_sch_4_nbs.routers.schemas.admin import (
     AdminAppointmentResult,
     AdminPayments,
     AppointmentCompletion,
+    ClientApproval,
     ClientOverview,
+    ClientProfile,
     ClientResult,
     FinalPriceDetails,
     FinalPriceEstimate,
@@ -67,6 +70,7 @@ from bx_sch_4_nbs.routers.schemas.responses import (
     AvailabilityPreviewResponse,
     ClientListResponse,
     ClientOverviewListResponse,
+    ClientProfileResponse,
     FinalPriceEstimateResponse,
     MessageResponse,
     MonthPublishedResponse,
@@ -419,7 +423,7 @@ def complete_appointment(
     now = utc_now()
     notes = (data.notes or "").strip() or None
     appointment, user = admin.complete_appointment(
-        session, appointment_id, data.final_price, data.duration_minutes, notes, now
+        session, appointment_id, data.final_price, data.duration_minutes, notes, now, approve_client=data.approve_client
     )
     return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, user, now))
 
@@ -568,27 +572,51 @@ def get_clients_overview(
     session: DatabaseSession, group: Literal["registered", "pending"] = "registered"
 ) -> ClientOverviewListResponse:
     rows = admin.clients_overview(session, registered=group == "registered", now=utc_now())
-    results = []
-    for user, visits, last_visit, next_appointment in rows:
-        if user.id is None:
-            raise RuntimeError("Client without id.")
-        results.append(
-            ClientOverview(
-                id=user.id,
-                name=user.name,
-                last_name=user.last_name,
-                instagram=user.instagram,
-                email=decrypt_email(user.email_encrypted),
-                phone=decrypt_phone(user.phone_encrypted),
-                is_active=user.is_active,
-                email_verified=user.email_verified,
-                created_at=user.created_at,
-                visits=visits,
-                last_visit=last_visit,
-                next_appointment=next_appointment,
-            )
-        )
-    return ClientOverviewListResponse(status="OK", detail=results)
+    return ClientOverviewListResponse(status="OK", detail=[client_overview(*row) for row in rows])
+
+
+def client_overview(
+    user: User, visits: int, last_visit: datetime | None, next_appointment: datetime | None
+) -> ClientOverview:
+    if user.id is None:
+        raise RuntimeError("Client without id.")
+    return ClientOverview(
+        id=user.id,
+        name=user.name,
+        last_name=user.last_name,
+        instagram=user.instagram,
+        email=decrypt_email(user.email_encrypted),
+        phone=decrypt_phone(user.phone_encrypted),
+        is_active=user.is_active,
+        email_verified=user.email_verified,
+        approved=user.approved_at is not None,
+        created_at=user.created_at,
+        visits=visits,
+        last_visit=last_visit,
+        next_appointment=next_appointment,
+    )
+
+
+def client_profile(session: DatabaseSession, user: User) -> ClientProfile:
+    """Her details, her totals and every appointment, with the same rules as the rest of the admin."""
+    if user.id is None:
+        raise RuntimeError("Client without id.")
+    now = utc_now()
+    appointments = admin.client_appointments(session, user.id)
+    completed = [a for a in appointments if a.status == AppointmentStatus.COMPLETED]
+    upcoming = [a.scheduled_at for a in appointments if a.status in schedule.ACTIVE_STATUSES and a.scheduled_at > now]
+    return ClientProfile(
+        client=client_overview(
+            user,
+            len(completed),
+            max((a.scheduled_at for a in completed), default=None),
+            min(upcoming, default=None),
+        ),
+        total_spent=sum((a.final_price or a.estimated_price for a in completed), Decimal(0)),
+        no_shows=sum(1 for a in appointments if a.status == AppointmentStatus.NO_SHOW),
+        cancellations=sum(1 for a in appointments if a.status == AppointmentStatus.CANCELLED),
+        appointments=[AdminAppointmentResult.from_row(a, user, now) for a in appointments],
+    )
 
 
 @router.get(
@@ -622,3 +650,22 @@ def get_year_report(session: DatabaseSession, year: Annotated[int, Query(ge=2026
     return YearReportResponse(
         status="OK", detail=YearReport(year=year, deposit_amount=settings.deposit_amount, months=months)
     )
+
+
+@router.get(
+    "/clients/{client_id}",
+    description="A client's profile: details, totals and the full history",
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Client does not exist"}},
+)
+def get_client_profile(session: DatabaseSession, client_id: int) -> ClientProfileResponse:
+    return ClientProfileResponse(status="OK", detail=client_profile(session, admin.get_client(session, client_id)))
+
+
+@router.put(
+    "/clients/{client_id}/approval",
+    description="Allow (or stop allowing) a client to come back: only approved clients can create a password",
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Client does not exist"}},
+)
+def set_client_approval(session: DatabaseSession, client_id: int, data: ClientApproval) -> ClientProfileResponse:
+    user = admin.set_client_approval(session, client_id, data.approved, utc_now())
+    return ClientProfileResponse(status="OK", detail=client_profile(session, user))

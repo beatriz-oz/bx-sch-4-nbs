@@ -54,6 +54,7 @@ class UserResult(BaseModel):
     is_active: bool
     email_verified: bool
     wants_agenda_emails: bool
+    can_create_password: bool
 
 
 class ProfileUpdate(BaseModel):

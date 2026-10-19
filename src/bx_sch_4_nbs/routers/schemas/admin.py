@@ -46,6 +46,8 @@ class ClientSummary(BaseModel):
     name: str
     last_name: str
     instagram: str | None
+    is_active: bool
+    approved: bool
 
 
 class AdminAppointmentResult(BaseModel):
@@ -89,6 +91,8 @@ class AdminAppointmentResult(BaseModel):
             name=user.name,
             last_name=user.last_name,
             instagram=user.instagram,
+            is_active=user.is_active,
+            approved=user.approved_at is not None,
         )
 
         return cls(
@@ -125,6 +129,8 @@ class AppointmentCompletion(BaseModel):
     final_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     # How long it really took; empty keeps the expected duration of the service.
     duration_minutes: int | None = Field(default=None, ge=15, le=600)
+    # A first-time client the studio wants back: she may then create a password.
+    approve_client: bool = False
     notes: str | None = Field(default=None, max_length=2000)
 
 
@@ -202,6 +208,7 @@ class AdminPayments(BaseModel):
 
 class ClientOverview(ClientResult):
     email_verified: bool
+    approved: bool
     created_at: StudioDatetime | None
     visits: int
     last_visit: StudioDatetime | None
@@ -232,3 +239,15 @@ class YearReport(BaseModel):
     year: int
     deposit_amount: Decimal
     months: list[MonthReportResult]
+
+
+class ClientApproval(BaseModel):
+    approved: bool
+
+
+class ClientProfile(BaseModel):
+    client: ClientOverview
+    total_spent: Decimal
+    no_shows: int
+    cancellations: int
+    appointments: list[AdminAppointmentResult]

@@ -97,6 +97,7 @@ def check_in_verify(session: DatabaseSession, data: CheckInVerify) -> TokenRespo
     "/activation/start",
     description="Start account activation for an inactive client. Sends a code to the registered email.",
     responses={
+        status.HTTP_403_FORBIDDEN: {"description": "The studio has not approved this client yet"},
         status.HTTP_404_NOT_FOUND: {"description": "Phone not registered"},
         status.HTTP_409_CONFLICT: {"description": "Account already active"},
         status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Code requested too recently"},
@@ -114,6 +115,11 @@ def activation_start(
         )
     if user.is_active:
         raise HTTPException(status.HTTP_409_CONFLICT, "This account is already active. Please log in.")
+    if user.approved_at is None:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Creating a password needs the studio's approval. Contact @nailsbyscooby on Instagram.",
+        )
 
     code = verification_codes.issue_code(session, user, VerificationPurpose.ACTIVATION)
     email = decrypt_email(user.email_encrypted)
@@ -129,7 +135,8 @@ def activation_start(
 )
 def activation_confirm(session: DatabaseSession, data: ActivationConfirm) -> TokenResponse:
     user = users.get_user_by_phone(session, data.phone)
-    if user is None or user.is_active:
+    # The approval is checked again here: a code asked before a revoke must not work.
+    if user is None or user.is_active or user.approved_at is None:
         raise InvalidVerificationCodeError("Invalid or expired code. Please request a new one.")
 
     verification_codes.verify_code(session, user, VerificationPurpose.ACTIVATION, data.code)
@@ -187,6 +194,7 @@ def user_result(user: User) -> UserResult:
         is_active=user.is_active,
         email_verified=user.email_verified,
         wants_agenda_emails=user.wants_agenda_emails,
+        can_create_password=not user.is_active and user.approved_at is not None,
     )
 
 
