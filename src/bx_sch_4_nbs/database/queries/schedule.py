@@ -17,6 +17,7 @@ from bx_sch_4_nbs.database.models import (
     ScheduleException,
     User,
 )
+from bx_sch_4_nbs.database.queries import day_slots
 from bx_sch_4_nbs.database.types import (
     AppointmentStatus,
     CancellationReason,
@@ -86,7 +87,7 @@ def delete_exception(session: Session, exception_id: int) -> None:
 
 
 def count_booked_slots(session: Session, day: date, slot_time: time | None) -> int:
-    slot_times = [slot_time] if slot_time is not None else settings.appointment_slots
+    slot_times = [slot_time] if slot_time is not None else day_slots.slots_for_day(session, day)
     instants = [to_utc(datetime.combine(day, t)) for t in slot_times]
     return session.exec(select(func.count()).select_from(BookedSlot).where(col(BookedSlot.slot_at).in_(instants))).one()
 

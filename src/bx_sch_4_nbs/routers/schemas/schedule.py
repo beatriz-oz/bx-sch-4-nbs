@@ -2,7 +2,6 @@ from datetime import date, time
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
 from bx_sch_4_nbs.routers.schemas.types import StudioDatetime
 
@@ -21,13 +20,6 @@ class ScheduleExceptionSet(BaseModel):
             raise ValueError("Mondays are always closed to clients.")
         if value < to_studio_time(utc_now()).date():
             raise ValueError("The day is in the past.")
-        return value
-
-    @field_validator("slot_time")
-    @classmethod
-    def validate_slot_time(cls, value: time | None) -> time | None:
-        if value is not None and value not in settings.appointment_slots:
-            raise ValueError("Invalid slot time.")
         return value
 
 
@@ -75,6 +67,7 @@ class AgendaSlotResult(BaseModel):
 class AgendaDay(BaseModel):
     day: date
     slots: list[AgendaSlotResult]
+    custom_times: bool
 
 
 class AgendaMonth(BaseModel):
@@ -82,3 +75,27 @@ class AgendaMonth(BaseModel):
     month: int
     published_at: StudioDatetime | None
     days: list[AgendaDay]
+
+
+class DaySlotsSet(BaseModel):
+    """The slots of one day. An empty list goes back to the default slots."""
+
+    day: date
+    slot_times: list[time] = Field(max_length=8)
+
+    @field_validator("day")
+    @classmethod
+    def validate_day(cls, value: date) -> date:
+        if value < to_studio_time(utc_now()).date():
+            raise ValueError("The day is in the past.")
+        return value
+
+    @field_validator("slot_times")
+    @classmethod
+    def validate_slot_times(cls, value: list[time]) -> list[time]:
+        for slot_time in value:
+            if not time(7, 0) <= slot_time <= time(21, 0) or slot_time.minute % 15 or slot_time.second:
+                raise ValueError("Slots go from 07:00 to 21:00, in steps of 15 minutes.")
+        if len(set(value)) != len(value):
+            raise ValueError("The same time appears twice.")
+        return sorted(value)

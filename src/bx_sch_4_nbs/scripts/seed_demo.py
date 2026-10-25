@@ -153,7 +153,7 @@ def main() -> None:
                     continue
 
                 service, size, art, broken = booking_details(rng)
-                if size in settings.restricted_nail_sizes and slot not in settings.restricted_size_slots:
+                if size in settings.restricted_nail_sizes and slot not in (SLOTS[0], SLOTS[-1]):
                     size = NailSize.LARGE
                 client = rng.choice(clients)
                 if client.id is None:

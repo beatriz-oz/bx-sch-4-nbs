@@ -6,6 +6,7 @@ from sqlmodel import Session, col, select
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.models import BookedSlot, PublishedMonth, ScheduleException
+from bx_sch_4_nbs.database.queries import day_slots
 from bx_sch_4_nbs.database.types import NailSize
 from bx_sch_4_nbs.helpers.common import to_studio_time, to_utc, utc_now
 
@@ -57,6 +58,7 @@ def available_slots(
     last_day = date(year, month, days_in_month)
 
     exceptions = get_exceptions(session, first_day, last_day)
+    custom_slots = day_slots.slots_by_day(session, first_day, last_day)
     booked = get_booked_slots(
         session,
         start=to_utc(datetime.combine(first_day, time.min)),
@@ -66,10 +68,11 @@ def available_slots(
     result = []
     for day_number in range(days_in_month):
         day = first_day + timedelta(days=day_number)
-        for slot_time in settings.appointment_slots:
+        slots = day_slots.slots_of(day, custom_slots)
+        for slot_time in slots:
             if not is_open_for_clients(day, slot_time, exceptions):
                 continue
-            if not is_slot_allowed_for_size(slot_time, nail_size):
+            if not is_slot_allowed_for_size(slot_time, nail_size, slots):
                 continue
             slot_at = to_utc(datetime.combine(day, slot_time))
             if slot_at in booked or slot_at <= now + timedelta(hours=settings.min_booking_advance_hours):
@@ -79,9 +82,10 @@ def available_slots(
     return result
 
 
-def is_slot_allowed_for_size(slot_time: time, nail_size: NailSize | None) -> bool:
+def is_slot_allowed_for_size(slot_time: time, nail_size: NailSize | None, day_slots_: list[time]) -> bool:
+    """Long nails take more time: they only go in the first or the last slot of the day."""
     if nail_size in settings.restricted_nail_sizes:
-        return slot_time in settings.restricted_size_slots
+        return slot_time in (min(day_slots_), max(day_slots_))
     return True
 
 
@@ -97,28 +101,38 @@ class AgendaSlot:
     is_booked: bool
 
 
-def month_agenda(session: Session, year: int, month: int) -> dict[date, list[AgendaSlot]]:
-    """Every standard slot of a month as the clients see it: open or closed, booked or free."""
+@dataclass
+class AgendaDayInfo:
+    slots: list[AgendaSlot]
+    custom_times: bool
+
+
+def month_agenda(session: Session, year: int, month: int) -> dict[date, AgendaDayInfo]:
+    """Every slot of a month as the clients see it: open or closed, booked or free."""
     days_in_month = calendar.monthrange(year, month)[1]
     first_day = date(year, month, 1)
     last_day = date(year, month, days_in_month)
 
     exceptions = get_exceptions(session, first_day, last_day)
+    custom_slots = day_slots.slots_by_day(session, first_day, last_day)
     booked = get_booked_slots(
         session,
         start=to_utc(datetime.combine(first_day, time.min)),
         end=to_utc(datetime.combine(last_day + timedelta(days=1), time.min)),
     )
 
-    agenda: dict[date, list[AgendaSlot]] = {}
+    agenda: dict[date, AgendaDayInfo] = {}
     for day_number in range(days_in_month):
         day = first_day + timedelta(days=day_number)
-        agenda[day] = [
-            AgendaSlot(
-                time=slot_time,
-                is_open=is_open_for_clients(day, slot_time, exceptions),
-                is_booked=to_utc(datetime.combine(day, slot_time)) in booked,
-            )
-            for slot_time in settings.appointment_slots
-        ]
+        agenda[day] = AgendaDayInfo(
+            slots=[
+                AgendaSlot(
+                    time=slot_time,
+                    is_open=is_open_for_clients(day, slot_time, exceptions),
+                    is_booked=to_utc(datetime.combine(day, slot_time)) in booked,
+                )
+                for slot_time in day_slots.slots_of(day, custom_slots)
+            ],
+            custom_times=day in custom_slots,
+        )
     return agenda

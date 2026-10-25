@@ -11,6 +11,7 @@ from bx_sch_4_nbs.database.models import Appointment, User
 from bx_sch_4_nbs.database.queries import (
     admin,
     availability,
+    day_slots,
     policies,
     prices,
     published_months,
@@ -71,6 +72,7 @@ from bx_sch_4_nbs.routers.schemas.responses import (
     ClientListResponse,
     ClientOverviewListResponse,
     ClientProfileResponse,
+    DaySlotsResponse,
     FinalPriceEstimateResponse,
     MessageResponse,
     MonthPublishedResponse,
@@ -88,6 +90,7 @@ from bx_sch_4_nbs.routers.schemas.schedule import (
     AgendaDay,
     AgendaMonth,
     AgendaSlotResult,
+    DaySlotsSet,
     MonthPublish,
     MonthPublished,
     PublishedMonthResult,
@@ -196,6 +199,8 @@ def get_schedule_exceptions(
     description="Open or close a whole day (slot_time empty) or a single slot",
 )
 def set_schedule_exception(session: DatabaseSession, data: ScheduleExceptionSet) -> ScheduleExceptionResponse:
+    if data.slot_time is not None and data.slot_time not in day_slots.slots_for_day(session, data.day):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "This time is not one of the slots of that day.")
     entry = schedule.set_exception(session, data.day, data.slot_time, data.is_open)
 
     warning = None
@@ -279,8 +284,12 @@ def get_agenda(
             month=month,
             published_at=published.published_at if published else None,
             days=[
-                AgendaDay(day=day, slots=[AgendaSlotResult.model_validate(slot) for slot in slots])
-                for day, slots in agenda.items()
+                AgendaDay(
+                    day=day,
+                    slots=[AgendaSlotResult.model_validate(slot) for slot in info.slots],
+                    custom_times=info.custom_times,
+                )
+                for day, info in agenda.items()
             ],
         ),
     )
@@ -669,3 +678,25 @@ def get_client_profile(session: DatabaseSession, client_id: int) -> ClientProfil
 def set_client_approval(session: DatabaseSession, client_id: int, data: ClientApproval) -> ClientProfileResponse:
     user = admin.set_client_approval(session, client_id, data.approved, utc_now())
     return ClientProfileResponse(status="OK", detail=client_profile(session, user))
+
+
+@router.put(
+    "/day-slots",
+    description=(
+        "Sets the slots of one day (e.g. 10:00, 14:00, 16:00 instead of the usual ones). "
+        "An empty list goes back to the default slots. Bookings already made are kept"
+    ),
+)
+def set_day_slots(session: DatabaseSession, data: DaySlotsSet) -> DaySlotsResponse:
+    before = day_slots.slots_for_day(session, data.day)
+    after = day_slots.set_day_slots(session, data.day, data.slot_times)
+
+    # Bookings at a time that no longer exists are not moved: tell the manicure.
+    removed = [slot_time for slot_time in before if slot_time not in after]
+    booked = sum(schedule.count_booked_slots(session, data.day, slot_time) for slot_time in removed)
+    warning = (
+        f"{booked} appointment(s) are booked at a time removed from this day. They were kept: move or cancel them."
+        if booked
+        else None
+    )
+    return DaySlotsResponse(status="OK", detail=after, warning=warning)

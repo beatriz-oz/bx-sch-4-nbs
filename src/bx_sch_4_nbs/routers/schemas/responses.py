@@ -1,3 +1,4 @@
+from datetime import time
 from typing import Literal, TypeVar
 
 from pydantic import BaseModel
@@ -55,3 +56,4 @@ AdminPaymentsResponse = BaseResponse[admin.AdminPayments]
 ClientOverviewListResponse = BaseResponse[list[admin.ClientOverview]]
 YearReportResponse = BaseResponse[admin.YearReport]
 ClientProfileResponse = BaseResponse[admin.ClientProfile]
+DaySlotsResponse = BaseResponseWithWarning[list[time]]

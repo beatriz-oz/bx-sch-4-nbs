@@ -259,6 +259,17 @@ class ScheduleException(SQLModel, table=True):
     is_open: bool = Field(nullable=False)
 
 
+class DaySlot(SQLModel, table=True):
+    """The slots of one specific day, when they differ from settings.appointment_slots."""
+
+    __tablename__ = "day_slots"
+    __table_args__ = (UniqueConstraint("day", "slot_time", name="uc_day_slots_day_slot"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    day: date = Field(description="Salon local date", nullable=False, index=True)
+    slot_time: time = Field(description="Salon local time", nullable=False)
+
+
 class PublishedMonth(SQLModel, table=True):
     __tablename__ = "published_months"
 
