@@ -1,20 +1,33 @@
-from fastapi import Depends, FastAPI
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from bx_sch_4_nbs.database.database import get_db
+from bx_sch_4_nbs.config import settings
+from bx_sch_4_nbs.routers.admin import router as admin_router
+from bx_sch_4_nbs.routers.appointments import router as appointments_router
+from bx_sch_4_nbs.routers.auth import router as auth_router
+from bx_sch_4_nbs.routers.exceptions import setup_exception_handlers
+from bx_sch_4_nbs.routers.policies import router as policies_router
+from bx_sch_4_nbs.routers.prices import router as prices_router
 
 app = FastAPI(title="Nail Scheduling API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+setup_exception_handlers(app)
+
+router = APIRouter()
+router.include_router(admin_router)
+router.include_router(auth_router)
+router.include_router(appointments_router)
+router.include_router(policies_router)
+router.include_router(prices_router)
+
+app.include_router(prefix="/v1", router=router)
 
 
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-@app.get("/health/database")
-async def database_health(
-    db: AsyncSession = Depends(get_db),  # noqa: B008
-) -> dict[str, str]:
-    await db.execute(text("SELECT 1"))
-    return {"database": "ok"}
