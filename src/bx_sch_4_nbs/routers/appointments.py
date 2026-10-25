@@ -154,7 +154,7 @@ def create_new_appointment(
     if current_policy is None:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "No booking policy is published yet. Please contact the studio.",
+            "No booking policy is published yet. Contact @nailsbyscooby on Instagram.",
         )
     if data.policy_id != current_policy.id:
         raise HTTPException(

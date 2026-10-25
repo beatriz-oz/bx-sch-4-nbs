@@ -91,12 +91,12 @@ def change_appointment_by_client(
         raise AppointmentNotActiveError("Only scheduled or confirmed appointments can be changed.")
     if appointment.service == Service.OTHER:
         raise AppointmentChangeNotAllowedError(
-            "This appointment was arranged with the studio. Please contact the studio to change it."
+            "This appointment was arranged directly with the studio. To change it, contact @nailsbyscooby on Instagram."
         )
     if not is_change_window_open(appointment.scheduled_at, now):
         raise AppointmentChangeNotAllowedError(
             f"Appointments can only be changed more than {settings.free_cancellation_hours} hours before. "
-            "Please contact the studio."
+            "Contact @nailsbyscooby on Instagram."
         )
 
     if scheduled_at == appointment.scheduled_at:

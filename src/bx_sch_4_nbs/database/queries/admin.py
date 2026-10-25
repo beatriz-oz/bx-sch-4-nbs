@@ -393,6 +393,15 @@ def set_client_approval(session: Session, user_id: int, approved: bool, now: dat
     return user
 
 
+def set_client_notes(session: Session, user_id: int, notes: str | None) -> User:
+    """The studio's private notes about a client. Blank text clears them."""
+    user = get_client(session, user_id)
+    user.studio_notes = (notes or "").strip() or None
+    session.add(user)
+    session.flush()
+    return user
+
+
 def client_appointments(session: Session, user_id: int) -> list[Appointment]:
     """All her appointments, the most recent first."""
     return list(

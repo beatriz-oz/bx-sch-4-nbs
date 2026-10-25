@@ -83,6 +83,11 @@ class User(SQLModel, table=True):
         default=True,
         nullable=False,
     )
+    studio_notes: str | None = Field(
+        default=None,
+        description="The studio's private notes about the client (preferences, allergies...); never shown to her",
+        sa_column=Column(Text, nullable=True),
+    )
     approved_at: datetime | None = Field(
         description="When the studio allowed this client to come back (create a password); empty = not allowed",
         default=None,

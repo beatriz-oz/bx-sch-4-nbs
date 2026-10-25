@@ -238,7 +238,7 @@ def confirm_attendance(session: Session, appointment_id: int, now: datetime) -> 
 
     if appointment.status not in ACTIVE_STATUSES:
         raise AppointmentNotActiveError(
-            "This appointment is no longer active (it was cancelled or already happened). Please contact NailsByScooby."
+            "This appointment is no longer active (it was cancelled or already happened). Contact @nailsbyscooby on Instagram."
         )
 
     if appointment.attendance_confirmed_at is not None:

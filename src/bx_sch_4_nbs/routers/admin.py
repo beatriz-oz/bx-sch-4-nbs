@@ -3,7 +3,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.helpers import DatabaseSession
@@ -24,6 +24,7 @@ from bx_sch_4_nbs.database.queries import approved_list as queries
 from bx_sch_4_nbs.database.queries.admin import cancel_appointment_by_studio
 from bx_sch_4_nbs.database.queries.schedule import list_appointments
 from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize, Service
+from bx_sch_4_nbs.helpers import export
 from bx_sch_4_nbs.helpers.authentication import CurrentAdmin, get_current_admin
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
 from bx_sch_4_nbs.helpers.email import (
@@ -41,6 +42,7 @@ from bx_sch_4_nbs.routers.schemas.admin import (
     AppointmentCompletion,
     CategoryExpenses,
     ClientApproval,
+    ClientNotes,
     ClientOverview,
     ClientProfile,
     ClientResult,
@@ -353,6 +355,42 @@ def get_appointments(
     return AdminAppointmentListResponse(status="OK", detail=results)
 
 
+XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+@router.get(
+    "/appointments/export",
+    description=(
+        "Every appointment of a period (Lisbon dates) as an Excel file, to open in Google Sheets: "
+        "prices, deposit, what was received and a total. Up to 2 years at a time"
+    ),
+    response_class=Response,
+    responses={
+        status.HTTP_200_OK: {"content": {XLSX: {}}, "description": "The .xlsx file"},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Invalid period"},
+    },
+)
+def export_appointments(
+    session: DatabaseSession,
+    start_date: date,
+    end_date: date,
+    language: Literal["pt", "en"] = "pt",
+) -> Response:
+    if end_date < start_date:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "The end date must be after the start date.")
+    if (end_date - start_date).days > 731:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Export up to 2 years at a time.")
+
+    rows = list_appointments(session, start_date, end_date)
+    content = export.appointments_workbook(rows, language, settings.deposit_amount)
+    filename = export.export_filename(start_date, end_date, language)
+    return Response(
+        content=content,
+        media_type=XLSX,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post(
     "/appointments/{appointment_id}/deposit",
     description="Confirms that the deposit has been paid. Only the admin can approve this",
@@ -629,6 +667,7 @@ def client_profile(session: DatabaseSession, user: User) -> ClientProfile:
             max((a.scheduled_at for a in completed), default=None),
             min(upcoming, default=None),
         ),
+        studio_notes=user.studio_notes,
         total_spent=sum((a.final_price or a.estimated_price for a in completed), Decimal(0)),
         no_shows=sum(1 for a in appointments if a.status == AppointmentStatus.NO_SHOW),
         cancellations=sum(1 for a in appointments if a.status == AppointmentStatus.CANCELLED),
@@ -691,6 +730,16 @@ def get_client_profile(session: DatabaseSession, client_id: int) -> ClientProfil
 )
 def set_client_approval(session: DatabaseSession, client_id: int, data: ClientApproval) -> ClientProfileResponse:
     user = admin.set_client_approval(session, client_id, data.approved, utc_now())
+    return ClientProfileResponse(status="OK", detail=client_profile(session, user))
+
+
+@router.put(
+    "/clients/{client_id}/notes",
+    description="The studio's private notes about a client (never shown to her). Empty text clears them",
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Client does not exist"}},
+)
+def set_client_notes(session: DatabaseSession, client_id: int, data: ClientNotes) -> ClientProfileResponse:
+    user = admin.set_client_notes(session, client_id, data.notes)
     return ClientProfileResponse(status="OK", detail=client_profile(session, user))
 
 

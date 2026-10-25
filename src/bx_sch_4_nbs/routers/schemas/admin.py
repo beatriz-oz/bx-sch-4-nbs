@@ -50,6 +50,8 @@ class ClientSummary(BaseModel):
     instagram: str | None
     is_active: bool
     approved: bool
+    # Admin only: the client's own endpoints never use this schema.
+    studio_notes: str | None
 
 
 class AdminAppointmentResult(BaseModel):
@@ -95,6 +97,7 @@ class AdminAppointmentResult(BaseModel):
             instagram=user.instagram,
             is_active=user.is_active,
             approved=user.approved_at is not None,
+            studio_notes=user.studio_notes,
         )
 
         return cls(
@@ -259,12 +262,17 @@ class YearReport(BaseModel):
     months: list[MonthReportResult]
 
 
+class ClientNotes(BaseModel):
+    notes: str | None = Field(default=None, max_length=2000)
+
+
 class ClientApproval(BaseModel):
     approved: bool
 
 
 class ClientProfile(BaseModel):
     client: ClientOverview
+    studio_notes: str | None
     total_spent: Decimal
     no_shows: int
     cancellations: int
