@@ -1,0 +1,61 @@
+# Jenkins configured as code: read at every start, so the setup lives in git, not in clicks.
+# ${JENKINS_ADMIN_PASSWORD} comes from jenkins/.env (never committed). "^${...}" is kept as is
+# for Jenkins to fill in at build time (the branch the person chose).
+jenkins:
+  systemMessage: "Nails by Scooby: local CI. Open a job and press Build with Parameters."
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          name: "Admin"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+unclassified:
+  location:
+    url: "http://localhost:8080/"
+
+jobs:
+  - script: |
+      pipelineJob('bx-sch-4-nbs') {
+        description('Back end (FastAPI): lint, types, migrations and the try_* tests against a throwaway MySQL.')
+        parameters {
+          stringParam('BRANCH', 'develop', 'Branch to check: develop, uat or main.')
+          booleanParam('DEPLOY_BENCH', false, 'Publish to the bench after the checks (not available yet).')
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('https://github.com/beatriz-oz/bx-sch-4-nbs.git') }
+                branch('^${BRANCH}')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(false)
+          }
+        }
+      }
+      pipelineJob('bx-sch-4-nbs-front') {
+        description('Front end (Angular): complete translations, unit tests and the build in both languages.')
+        parameters {
+          stringParam('BRANCH', 'main', 'Branch to check.')
+          booleanParam('DEPLOY_BENCH', false, 'Publish to the bench after the checks (not available yet).')
+        }
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('https://github.com/beatriz-oz/bx-sch-4-nbs-front.git') }
+                branch('^${BRANCH}')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(false)
+          }
+        }
+      }
