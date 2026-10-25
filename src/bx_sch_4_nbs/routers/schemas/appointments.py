@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from itertools import groupby
-from typing import Literal
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -28,8 +28,9 @@ class AvailabilityPreview(BaseModel):
     days: list[AvailableDay]
 
 
-class AppointmentDetails(BaseModel):
-    scheduled_at: UtcDatetime
+class ServiceDetails(BaseModel):
+    """What the client wants done. With a date, it becomes AppointmentDetails."""
+
     service: Service
     nail_size: NailSize | None = None
     nail_art_level: NailArtLevel | None = None
@@ -37,7 +38,7 @@ class AppointmentDetails(BaseModel):
     has_other_professional_nails: bool = False
 
     @model_validator(mode="after")
-    def validate_service_fields(self) -> AppointmentDetails:
+    def validate_service_fields(self) -> Self:
         if self.service == Service.OTHER:
             raise ValueError("This service can only be booked by the studio.")
         if self.service == Service.REMOVAL:
@@ -46,6 +47,10 @@ class AppointmentDetails(BaseModel):
         elif self.nail_size is None or self.nail_art_level is None:
             raise ValueError("Nail size and nail art level are required for this service.")
         return self
+
+
+class AppointmentDetails(ServiceDetails):
+    scheduled_at: UtcDatetime
 
 
 class PossibleExtraResult(BaseModel):

@@ -172,17 +172,67 @@ def estimate_price(
     has_other_professional_nails: bool,
 ) -> Estimate:
     effective_service, note = resolve_service(session, user_id, service, scheduled_at)
-
-    total = calculate_price(
+    return _estimate(
         session,
         service=effective_service,
         nail_size=nail_size,
         nail_art_level=nail_art_level,
         broken_nails=broken_nails,
+        has_other_professional_nails=has_other_professional_nails,
+        note=note,
     )
 
-    if effective_service == Service.REMOVAL:
-        return Estimate(service=effective_service, estimated_price=total)
+
+def simulate_price(
+    session: Session,
+    *,
+    service: Service,
+    nail_size: NailSize | None,
+    nail_art_level: NailArtLevel | None,
+    broken_nails: int,
+    has_other_professional_nails: bool,
+) -> Estimate:
+    """
+    The estimate for someone not logged in. Without knowing the client, the maintenance
+    price is shown as asked, with a note on when it becomes an application.
+    """
+    note = None
+    if service == Service.MAINTENANCE:
+        note = (
+            f"Maintenance price applies when the last appointment was at most "
+            f"{settings.maintenance_max_days} days before. After that, it is priced as an application."
+        )
+    return _estimate(
+        session,
+        service=service,
+        nail_size=nail_size,
+        nail_art_level=nail_art_level,
+        broken_nails=broken_nails,
+        has_other_professional_nails=has_other_professional_nails,
+        note=note,
+    )
+
+
+def _estimate(
+    session: Session,
+    *,
+    service: Service,
+    nail_size: NailSize | None,
+    nail_art_level: NailArtLevel | None,
+    broken_nails: int,
+    has_other_professional_nails: bool,
+    note: str | None,
+) -> Estimate:
+    total = calculate_price(
+        session,
+        service=service,
+        nail_size=nail_size,
+        nail_art_level=nail_art_level,
+        broken_nails=broken_nails,
+    )
+
+    if service == Service.REMOVAL:
+        return Estimate(service=service, estimated_price=total)
 
     extras = []
     if has_other_professional_nails:
@@ -196,4 +246,4 @@ def estimate_price(
         PossibleExtra(description="Extra charm", amount=_addon_price(session, Addon.EXTRA_CHARM), per_unit=True)
     )
 
-    return Estimate(service=effective_service, estimated_price=total, possible_extras=extras, note=note)
+    return Estimate(service=service, estimated_price=total, possible_extras=extras, note=note)
