@@ -36,3 +36,7 @@ class AppointmentNotActiveError(Exception):
 
 class AppointmentTooEarlyError(Exception):
     pass
+
+
+class AppointmentChangeNotAllowedError(Exception):
+    pass

@@ -3,10 +3,11 @@ from decimal import Decimal
 from itertools import groupby
 from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
+from bx_sch_4_nbs.database.queries.schedule import ACTIVE_STATUSES, is_change_window_open
 from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, NailArtLevel, NailSize, Service
-from bx_sch_4_nbs.helpers.common import to_studio_time
+from bx_sch_4_nbs.helpers.common import to_studio_time, to_utc, utc_now
 from bx_sch_4_nbs.routers.schemas.types import StudioDatetime, UtcDatetime
 
 
@@ -94,6 +95,16 @@ class AppointmentResult(BaseModel):
     cancelled_at: StudioDatetime | None
     cancelled_by: int | None
     cancellation_reason: CancellationReason | None
+
+    @computed_field
+    @property
+    def can_change(self) -> bool:
+        """Whether the client can still change it herself (the rule stays here, not in the frontend)."""
+        return (
+            self.status in ACTIVE_STATUSES
+            and self.service != Service.OTHER
+            and is_change_window_open(to_utc(self.scheduled_at), utc_now())
+        )
 
 
 class BookingResult(BaseModel):

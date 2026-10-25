@@ -271,3 +271,29 @@ def send_booked_by_studio_notification(to: str, when: str, details: str, deposit
             "If you do not recognize this appointment, please contact Nails by Scooby."
         ),
     )
+
+
+def send_changed_by_studio_notification(to: str, previous_when: str, when: str, details: str) -> None:
+    send_email(
+        to=to,
+        subject=f"Your appointment was moved to {when} - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            f"Nails by Scooby moved your appointment from {previous_when} to {when} (Lisbon time).\n\n"
+            f"{details}\n\n"
+            "You will get a reminder to confirm your attendance before the new date.\n\n"
+            "If this does not work for you, please contact Nails by Scooby."
+        ),
+    )
+
+
+def send_changed_by_client_notification(
+    to: str, client_instagram: str | None, client_name: str, previous_when: str, when: str, details: str
+) -> None:
+    instagram_label = f"@{client_instagram}" if client_instagram else "no Instagram"
+    moved = f"moved from {previous_when} to {when}" if previous_when != when else f"on {when}, details changed"
+    send_email(
+        to=to,
+        subject=f"Appointment changed: {when}",
+        body=(f"{instagram_label} - {client_name} changed an appointment: {moved} (Lisbon time).\n\nNow:\n{details}"),
+    )

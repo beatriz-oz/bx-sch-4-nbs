@@ -31,6 +31,7 @@ from bx_sch_4_nbs.helpers.email import (
     send_agenda_published,
     send_booked_by_studio_notification,
     send_cancelled_by_studio_notification,
+    send_changed_by_studio_notification,
     send_deposit_confirmation,
 )
 from bx_sch_4_nbs.helpers.security import decrypt_email, decrypt_phone
@@ -54,6 +55,7 @@ from bx_sch_4_nbs.routers.schemas.admin import (
     PreApprovedInstagramResult,
     ServiceReport,
     StudioAppointment,
+    StudioAppointmentDetails,
     StudioCancellation,
     YearReport,
 )
@@ -750,3 +752,50 @@ def change_expense(session: DatabaseSession, expense_id: int, data: ExpenseSet) 
 def remove_expense(session: DatabaseSession, expense_id: int) -> MessageResponse:
     expenses.delete_expense(session, expense_id)
     return MessageResponse(status="OK", detail="Expense removed")
+
+
+@router.put(
+    "/appointments/{appointment_id}",
+    description=(
+        "Change an active appointment: day and time (any, past included), service, price or notes. "
+        "When the time changes, the client gets an email and the reminder starts again"
+    ),
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Appointment does not exist"},
+        status.HTTP_409_CONFLICT: {"description": "Not active anymore, or the new time is already booked"},
+    },
+)
+def change_appointment(
+    session: DatabaseSession,
+    appointment_id: int,
+    data: StudioAppointmentDetails,
+    background_tasks: BackgroundTasks,
+) -> AdminAppointmentResponse:
+    now = utc_now()
+    changed = admin.change_appointment_by_studio(
+        session,
+        appointment_id,
+        scheduled_at=data.scheduled_at,
+        service=data.service,
+        nail_size=data.nail_size,
+        nail_art_level=data.nail_art_level,
+        broken_nails=data.broken_nails,
+        has_other_professional_nails=data.has_other_professional_nails,
+        estimated_price=data.estimated_price,
+        notes=data.notes,
+        now=now,
+    )
+    appointment = changed.appointment
+    client = admin.get_client(session, appointment.user_id)
+
+    # As when booking: a move into the next hours was just agreed with the client, no email needed.
+    if changed.time_changed and not admin.is_within_reminder_window(appointment.scheduled_at, now):
+        background_tasks.add_task(
+            send_changed_by_studio_notification,
+            decrypt_email(client.email_encrypted),
+            to_studio_time(changed.previous_scheduled_at).strftime("%d/%m/%Y %H:%M"),
+            to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
+            booking_details(appointment),
+        )
+
+    return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, client, now))

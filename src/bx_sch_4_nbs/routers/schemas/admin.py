@@ -1,5 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -159,7 +160,9 @@ class NewClient(BaseModel):
     instagram: InstagramHandle | None = None
 
 
-class StudioAppointment(BaseModel):
+class StudioAppointmentDetails(BaseModel):
+    """What the studio books or changes. Used as is to change an appointment."""
+
     # Not based on AppointmentDetails on purpose: the client rules (and the OTHER ban) do not apply here.
     scheduled_at: UtcDatetime
     service: Service
@@ -169,14 +172,9 @@ class StudioAppointment(BaseModel):
     has_other_professional_nails: bool = False
     estimated_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     notes: str | None = Field(default=None, max_length=1000)
-    user_id: int | None = None
-    new_client: NewClient | None = None
 
     @model_validator(mode="after")
-    def validate_booking(self) -> StudioAppointment:
-        if (self.user_id is None) == (self.new_client is None):
-            raise ValueError("Send either user_id (an existing client) or new_client, not both.")
-
+    def validate_details(self) -> Self:
         if self.service in (Service.REMOVAL, Service.OTHER):
             if self.nail_size is not None or self.nail_art_level is not None or self.broken_nails:
                 raise ValueError(f"{self.service.value} does not take nail size, nail art level or broken nails.")
@@ -188,6 +186,17 @@ class StudioAppointment(BaseModel):
 
         # BookedSlot compares exact instants: without this, 13:00:00 and 13:00:30 would not collide.
         self.scheduled_at = self.scheduled_at.replace(second=0, microsecond=0)
+        return self
+
+
+class StudioAppointment(StudioAppointmentDetails):
+    user_id: int | None = None
+    new_client: NewClient | None = None
+
+    @model_validator(mode="after")
+    def validate_client(self) -> Self:
+        if (self.user_id is None) == (self.new_client is None):
+            raise ValueError("Send either user_id (an existing client) or new_client, not both.")
         return self
 
 

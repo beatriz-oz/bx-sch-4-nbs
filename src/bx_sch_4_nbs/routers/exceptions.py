@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from bx_sch_4_nbs.database.exceptions import (
+    AppointmentChangeNotAllowedError,
     AppointmentNotActiveError,
     AppointmentTooEarlyError,
     CancellationNotAllowedError,
@@ -135,5 +136,9 @@ def setup_exception_handlers(app: FastAPI) -> None:
     )
     app.add_exception_handler(
         AppointmentTooEarlyError,
+        handle_appointment_not_ready,
+    )
+    app.add_exception_handler(
+        AppointmentChangeNotAllowedError,
         handle_appointment_not_ready,
     )

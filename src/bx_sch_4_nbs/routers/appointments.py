@@ -4,7 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.helpers import DatabaseSession
-from bx_sch_4_nbs.database.queries import availability, policies, prices, schedule
+from bx_sch_4_nbs.database.queries import availability, changes, policies, prices, schedule
 from bx_sch_4_nbs.database.types import NailSize
 from bx_sch_4_nbs.helpers.authentication import CurrentUser, read_attendance_token
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
@@ -12,6 +12,7 @@ from bx_sch_4_nbs.helpers.email import (
     booking_details,
     send_cancelled_appointment_notification,
     send_cancelled_appointment_notification_client,
+    send_changed_by_client_notification,
     send_new_appointment_notification,
 )
 from bx_sch_4_nbs.helpers.security import decrypt_email
@@ -216,4 +217,59 @@ def get_my_appointments(session: DatabaseSession, user: CurrentUser) -> Appointm
     appointments = schedule.list_user_appointments(session, user.id)
     return AppointmentListResponse(
         status="OK", detail=[AppointmentResult.model_validate(appointment) for appointment in appointments]
+    )
+
+
+@router.put(
+    "/{appointment_id}",
+    description=(
+        "Change your appointment (day and time, service details) more than 48 hours before it. "
+        "The price is calculated again; the deposit stays the same"
+    ),
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Appointment does not exist"},
+        status.HTTP_409_CONFLICT: {"description": "Too late to change, not active, or the time is not available"},
+    },
+)
+def change_my_appointment(
+    session: DatabaseSession,
+    user: CurrentUser,
+    appointment_id: int,
+    data: AppointmentDetails,
+    background_tasks: BackgroundTasks,
+) -> NewAppointmentResponse:
+    if user.id is None:
+        raise RuntimeError("Authenticated user without id.")
+
+    changed, estimate = changes.change_appointment_by_client(
+        session,
+        appointment_id,
+        user.id,
+        scheduled_at=data.scheduled_at,
+        service=data.service,
+        nail_size=data.nail_size,
+        nail_art_level=data.nail_art_level,
+        broken_nails=data.broken_nails,
+        has_other_professional_nails=data.has_other_professional_nails,
+        now=utc_now(),
+    )
+    appointment = changed.appointment
+
+    background_tasks.add_task(
+        send_changed_by_client_notification,
+        settings.studio_notification_email,
+        user.instagram,
+        f"{user.name} {user.last_name}",
+        to_studio_time(changed.previous_scheduled_at).strftime("%d/%m/%Y %H:%M"),
+        to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
+        booking_details(appointment),
+    )
+
+    return NewAppointmentResponse(
+        status="OK",
+        detail=BookingResult(
+            appointment=AppointmentResult.model_validate(appointment),
+            possible_extras=[PossibleExtraResult.model_validate(extra) for extra in estimate.possible_extras],
+            note=estimate.note,
+        ),
     )

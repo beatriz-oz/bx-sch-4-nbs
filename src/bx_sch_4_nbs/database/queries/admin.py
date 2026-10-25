@@ -12,7 +12,7 @@ from bx_sch_4_nbs.database.exceptions import (
     ResourceDoesNotExistError,
 )
 from bx_sch_4_nbs.database.models import Appointment, User
-from bx_sch_4_nbs.database.queries import prices, schedule
+from bx_sch_4_nbs.database.queries import changes, prices, schedule
 from bx_sch_4_nbs.database.types import (
     AppointmentStatus,
     CancellationReason,
@@ -219,6 +219,40 @@ def book_appointment_by_studio(
         notes=notes,
         attendance_confirmed_at=now if is_squeeze_in else None,
     )
+
+
+def change_appointment_by_studio(
+    session: Session,
+    appointment_id: int,
+    *,
+    scheduled_at: datetime,
+    service: Service,
+    nail_size: NailSize | None,
+    nail_art_level: NailArtLevel | None,
+    broken_nails: int,
+    has_other_professional_nails: bool,
+    estimated_price: Decimal,
+    notes: str | None,
+    now: datetime,
+) -> changes.ChangedAppointment:
+    """The studio changes anything, at any time. The price is the one she sets."""
+    appointment = changes.get_active_appointment(session, appointment_id)
+    previous = appointment.scheduled_at
+
+    # Moved into the next hours: agreed with the client just now, as a squeeze-in.
+    is_squeeze_in = now < scheduled_at and is_within_reminder_window(scheduled_at, now)
+    changes.move_appointment(session, appointment, scheduled_at, attendance_confirmed_at=now if is_squeeze_in else None)
+
+    appointment.service = service
+    appointment.nail_size = nail_size
+    appointment.nail_art_level = nail_art_level
+    appointment.broken_nails = broken_nails
+    appointment.has_other_professional_nails = has_other_professional_nails
+    appointment.estimated_price = estimated_price
+    appointment.notes = notes
+    session.add(appointment)
+    session.flush()
+    return changes.ChangedAppointment(appointment, previous)
 
 
 def search_clients(session: Session, search: str, limit: int) -> list[User]:

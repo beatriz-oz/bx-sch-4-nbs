@@ -97,6 +97,14 @@ def duration_minutes(appointment: Appointment) -> int:
     return appointment.duration_minutes or settings.service_durations_minutes[appointment.service]
 
 
+def is_change_window_open(scheduled_at: datetime, now: datetime) -> bool:
+    """
+    More than free_cancellation_hours before: the client can still change the appointment,
+    or cancel it and get the deposit back.
+    """
+    return scheduled_at - now > timedelta(hours=settings.free_cancellation_hours)
+
+
 def is_refund_due(appointment: Appointment) -> bool:
     """The deposit was paid, the cancellation gives it back, and the studio has not done it yet."""
     return (
@@ -119,7 +127,7 @@ def cancel_appointment(session: Session, appointment_id: int, user_id: int, acce
     if appointment.scheduled_at <= now:
         raise CancellationNotAllowedError("This appointment has already started and cannot be cancelled.")
 
-    is_early = appointment.scheduled_at - now > timedelta(hours=settings.free_cancellation_hours)
+    is_early = is_change_window_open(appointment.scheduled_at, now)
     reason = CancellationReason.CLIENT_EARLY if is_early else CancellationReason.CLIENT_LATE
 
     if reason == CancellationReason.CLIENT_LATE and not accept_deposit_loss:
