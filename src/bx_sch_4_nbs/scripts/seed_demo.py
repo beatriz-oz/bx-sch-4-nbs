@@ -1,17 +1,19 @@
 """
-Demo data to show the system: clients, ~3 months of history and ~5 weeks of agenda.
+Demo data to show the system: clients, ~3 months of history and ~5 weeks of agenda,
+plus the studio's expenses of those months.
 
     uv run python -m bx_sch_4_nbs.scripts.seed_demo          # (re)creates the demo data
     uv run python -m bx_sch_4_nbs.scripts.seed_demo --reset  # only removes it
 
 Everything is written straight to the database: no email is sent. The demo clients are
-recognised by their Instagram handles (DEMO_CLIENTS), so removing them never touches other data.
+recognised by their Instagram handles (DEMO_CLIENTS), and the demo expenses by their
+descriptions (DEMO_EXPENSES), so removing them never touches other data.
 The dates are relative to today, so the demo always looks current.
 """
 
 import random
 import sys
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
 from sqlmodel import Session, col, delete, select
@@ -21,6 +23,7 @@ from bx_sch_4_nbs.database.helpers import engine
 from bx_sch_4_nbs.database.models import (
     Appointment,
     BookedSlot,
+    Expense,
     Policy,
     PreApprovedInstagram,
     PublishedMonth,
@@ -30,6 +33,7 @@ from bx_sch_4_nbs.database.queries.prices import calculate_price
 from bx_sch_4_nbs.database.types import (
     AppointmentStatus,
     CancellationReason,
+    ExpenseCategory,
     NailArtLevel,
     NailSize,
     Service,
@@ -73,6 +77,15 @@ ART = [NailArtLevel.LEVEL_1, NailArtLevel.LEVEL_2, NailArtLevel.LEVEL_2, NailArt
 SERVICES = [Service.APPLICATION] * 4 + [Service.MAINTENANCE] * 5 + [Service.REMOVAL] + [Service.OTHER]
 HANDLES = [handle for _, _, handle, _, _ in DEMO_CLIENTS]
 
+# (day of the month, description, category, amount): repeated every month of the demo.
+DEMO_EXPENSES = [
+    (3, "Renda do espaço (demo)", ExpenseCategory.BILLS, Decimal("250.00")),
+    (8, "Géis e verniz (demo)", ExpenseCategory.PRODUCTS, Decimal("86.40")),
+    (15, "Limas, algodão e luvas (demo)", ExpenseCategory.MATERIAL, Decimal("32.75")),
+    (20, "Luz e internet (demo)", ExpenseCategory.BILLS, Decimal("54.90")),
+    (24, "Charms e pedrinhas (demo)", ExpenseCategory.PRODUCTS, Decimal("18.60")),
+]
+
 
 def remove_demo(session: Session) -> None:
     users = session.exec(select(User).where(col(User.instagram).in_(HANDLES))).all()
@@ -83,6 +96,7 @@ def remove_demo(session: Session) -> None:
         session.exec(delete(Appointment).where(col(Appointment.user_id).in_(ids)))
         session.exec(delete(User).where(col(User.id).in_(ids)))
     session.exec(delete(PreApprovedInstagram).where(col(PreApprovedInstagram.instagram).in_(DEMO_PRE_APPROVED)))
+    session.exec(delete(Expense).where(col(Expense.description).in_([e[1] for e in DEMO_EXPENSES])))
     session.commit()
     print(f"Removed {len(ids)} demo clients and their appointments.")
 
@@ -240,6 +254,16 @@ def main() -> None:
                     taken.add(scheduled_at)
                 counts[appointment.status.value] = counts.get(appointment.status.value, 0) + 1
 
+        # The expenses of the last 3 months and of this month, up to today.
+        expenses = 0
+        for month_offset in range(-3, 1):
+            month_index = today.year * 12 + today.month - 1 + month_offset
+            for day_number, description, category, amount in DEMO_EXPENSES:
+                day = date(month_index // 12, month_index % 12 + 1, day_number)
+                if day <= today:
+                    session.add(Expense(day=day, description=description, category=category, amount=amount))
+                    expenses += 1
+
         # Clients can only book published months: open this one and the next.
         for month_offset in (0, 1):
             month_index = today.year * 12 + today.month - 1 + month_offset
@@ -253,6 +277,7 @@ def main() -> None:
         f"Created {len(DEMO_CLIENTS)} clients ({sum(c[4] for c in DEMO_CLIENTS)} registered) "
         f"and {sum(counts.values())} appointments: {counts}"
     )
+    print(f"Created {expenses} expenses.")
     print(f"Demo clients log in with their phone and the password {DEMO_PASSWORD!r}.")
 
 

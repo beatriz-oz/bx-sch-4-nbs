@@ -8,6 +8,7 @@ from bx_sch_4_nbs.database.types import (
     Addon,
     AppointmentStatus,
     CancellationReason,
+    ExpenseCategory,
     NailArtLevel,
     NailSize,
     Service,
@@ -276,6 +277,22 @@ class PublishedMonth(SQLModel, table=True):
     year: int = Field(primary_key=True)
     month: int = Field(primary_key=True)
     published_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(DateTime, nullable=False, server_default=func.current_timestamp()),
+    )
+
+
+class Expense(SQLModel, table=True):
+    """Money the studio spent: products, material, bills... Used for the profit in the reports."""
+
+    __tablename__ = "expenses"
+
+    id: int | None = Field(default=None, primary_key=True)
+    day: date = Field(description="Salon local date", nullable=False, index=True)
+    description: str = Field(max_length=200, nullable=False)
+    category: ExpenseCategory = Field(nullable=False)
+    amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
+    created_at: datetime | None = Field(
         default=None,
         sa_column=Column(DateTime, nullable=False, server_default=func.current_timestamp()),
     )

@@ -1,13 +1,14 @@
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlmodel import Session, col, select
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.models import Appointment
+from bx_sch_4_nbs.database.queries.expenses import list_expenses
 from bx_sch_4_nbs.database.queries.schedule import duration_minutes
-from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, Service
+from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, ExpenseCategory, Service
 from bx_sch_4_nbs.helpers.common import to_studio_time, to_utc
 
 # Cancellations where the studio keeps the deposit (as the policies say).
@@ -31,6 +32,7 @@ class MonthReport:
     no_shows: int = 0
     cancellations: int = 0
     by_service: dict[Service, ServiceTotals] = field(default_factory=dict)
+    expenses_by_category: dict[ExpenseCategory, Decimal] = field(default_factory=dict)
 
     @property
     def kept_deposits_revenue(self) -> Decimal:
@@ -39,6 +41,14 @@ class MonthReport:
     @property
     def total_revenue(self) -> Decimal:
         return self.services_revenue + self.kept_deposits_revenue
+
+    @property
+    def expenses(self) -> Decimal:
+        return sum(self.expenses_by_category.values(), Decimal(0))
+
+    @property
+    def profit(self) -> Decimal:
+        return self.total_revenue - self.expenses
 
 
 def keeps_deposit(appointment: Appointment) -> bool:
@@ -83,5 +93,10 @@ def year_report(session: Session, year: int) -> list[MonthReport]:
 
         if keeps_deposit(appointment):
             report.kept_deposits += 1
+
+    # Expenses already have a Lisbon date: no conversion needed.
+    for expense in list_expenses(session, date(year, 1, 1), date(year, 12, 31)):
+        totals = months[expense.day.month - 1].expenses_by_category
+        totals[expense.category] = totals.get(expense.category, Decimal(0)) + expense.amount
 
     return months

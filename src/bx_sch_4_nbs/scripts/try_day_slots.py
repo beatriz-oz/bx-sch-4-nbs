@@ -152,7 +152,8 @@ session.flush()
 r = client.put("/v1/admin/day-slots", headers=ADMIN, json={"day": str(custom_day), "slot_times": ["10:00", "15:00"]})
 body = r.json()
 check("removing a booked time -> 200 with a warning", r.status_code == 200 and body.get("warning"), body)
-check("the appointment is kept", session.get(Appointment, appointment.id).status == AppointmentStatus.SCHEDULED)  # type: ignore[union-attr]
+kept = session.get(Appointment, appointment.id)
+check("the appointment is kept", kept is not None and kept.status == AppointmentStatus.SCHEDULED)
 
 # --- Back to default ---
 r = client.put("/v1/admin/day-slots", headers=ADMIN, json={"day": str(custom_day), "slot_times": []})

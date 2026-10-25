@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
@@ -8,6 +8,7 @@ from bx_sch_4_nbs.database.queries.schedule import duration_minutes, is_deposit_
 from bx_sch_4_nbs.database.types import (
     AppointmentStatus,
     CancellationReason,
+    ExpenseCategory,
     NailArtLevel,
     NailSize,
     Service,
@@ -222,6 +223,11 @@ class ServiceReport(BaseModel):
     revenue: Decimal
 
 
+class CategoryExpenses(BaseModel):
+    category: ExpenseCategory
+    amount: Decimal
+
+
 class MonthReportResult(BaseModel):
     month: int
     completed: int
@@ -233,6 +239,9 @@ class MonthReportResult(BaseModel):
     no_shows: int
     cancellations: int
     by_service: list[ServiceReport]
+    expenses: Decimal
+    expenses_by_category: list[CategoryExpenses]
+    profit: Decimal
 
 
 class YearReport(BaseModel):
@@ -251,3 +260,27 @@ class ClientProfile(BaseModel):
     no_shows: int
     cancellations: int
     appointments: list[AdminAppointmentResult]
+
+
+class ExpenseSet(BaseModel):
+    day: date
+    description: str = Field(min_length=1, max_length=200)
+    category: ExpenseCategory
+    amount: Decimal = Field(gt=0, le=Decimal("99999999.99"), decimal_places=2)
+
+    @model_validator(mode="after")
+    def strip_description(self) -> ExpenseSet:
+        self.description = self.description.strip()
+        if not self.description:
+            raise ValueError("The description is empty.")
+        return self
+
+
+class ExpenseResult(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    day: date
+    description: str
+    category: ExpenseCategory
+    amount: Decimal

@@ -50,3 +50,10 @@ class CancellationReason(str, Enum):
     CLIENT_LATE = "Cancelled by the client, less than 48h before"
     NOT_CONFIRMED = "Attendance not confirmed in time"
     BY_STUDIO = "Cancelled by the studio"
+
+
+class ExpenseCategory(str, Enum):
+    PRODUCTS = "Products"
+    MATERIAL = "Material"
+    BILLS = "Bills"
+    OTHER = "Other"

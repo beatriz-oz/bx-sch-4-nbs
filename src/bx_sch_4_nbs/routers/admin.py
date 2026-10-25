@@ -12,6 +12,7 @@ from bx_sch_4_nbs.database.queries import (
     admin,
     availability,
     day_slots,
+    expenses,
     policies,
     prices,
     published_months,
@@ -37,10 +38,13 @@ from bx_sch_4_nbs.routers.schemas.admin import (
     AdminAppointmentResult,
     AdminPayments,
     AppointmentCompletion,
+    CategoryExpenses,
     ClientApproval,
     ClientOverview,
     ClientProfile,
     ClientResult,
+    ExpenseResult,
+    ExpenseSet,
     FinalPriceDetails,
     FinalPriceEstimate,
     MonthReportResult,
@@ -73,6 +77,8 @@ from bx_sch_4_nbs.routers.schemas.responses import (
     ClientOverviewListResponse,
     ClientProfileResponse,
     DaySlotsResponse,
+    ExpenseListResponse,
+    ExpenseResponse,
     FinalPriceEstimateResponse,
     MessageResponse,
     MonthPublishedResponse,
@@ -653,6 +659,12 @@ def get_year_report(session: DatabaseSession, year: Annotated[int, Query(ge=2026
                 )
                 for service, totals in report.by_service.items()
             ],
+            expenses=report.expenses,
+            expenses_by_category=[
+                CategoryExpenses(category=category, amount=amount)
+                for category, amount in report.expenses_by_category.items()
+            ],
+            profit=report.profit,
         )
         for report in reports.year_report(session, year)
     ]
@@ -700,3 +712,41 @@ def set_day_slots(session: DatabaseSession, data: DaySlotsSet) -> DaySlotsRespon
         else None
     )
     return DaySlotsResponse(status="OK", detail=after, warning=warning)
+
+
+@router.get("/expenses", description="The expenses of a month (Lisbon dates)")
+def get_expenses(
+    session: DatabaseSession,
+    year: Annotated[int, Query(ge=2026, le=2100)],
+    month: Annotated[int, Query(ge=1, le=12)],
+) -> ExpenseListResponse:
+    first_day = date(year, month, 1)
+    last_day = date(year, month, calendar.monthrange(year, month)[1])
+    entries = expenses.list_expenses(session, first_day, last_day)
+    return ExpenseListResponse(status="OK", detail=[ExpenseResult.model_validate(entry) for entry in entries])
+
+
+@router.post("/expenses", description="Record an expense", status_code=status.HTTP_201_CREATED)
+def add_expense(session: DatabaseSession, data: ExpenseSet) -> ExpenseResponse:
+    entry = expenses.create_expense(session, data.day, data.description, data.category, data.amount)
+    return ExpenseResponse(status="OK", detail=ExpenseResult.model_validate(entry))
+
+
+@router.put(
+    "/expenses/{expense_id}",
+    description="Correct an expense",
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Expense does not exist"}},
+)
+def change_expense(session: DatabaseSession, expense_id: int, data: ExpenseSet) -> ExpenseResponse:
+    entry = expenses.update_expense(session, expense_id, data.day, data.description, data.category, data.amount)
+    return ExpenseResponse(status="OK", detail=ExpenseResult.model_validate(entry))
+
+
+@router.delete(
+    "/expenses/{expense_id}",
+    description="Remove an expense",
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Expense does not exist"}},
+)
+def remove_expense(session: DatabaseSession, expense_id: int) -> MessageResponse:
+    expenses.delete_expense(session, expense_id)
+    return MessageResponse(status="OK", detail="Expense removed")
