@@ -3,3 +3,6 @@
 __pycache__/
 .ruff_cache/
 .ty/
+# Deploy: secrets and database copies stay on the server
+deploy/bench-auth.caddy
+deploy/backups/

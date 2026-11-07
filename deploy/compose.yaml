@@ -1,0 +1,97 @@
+# The whole system on one server:   docker compose up -d --build   (from this folder)
+# Needs the two repositories side by side:  ./bx-sch-4-nbs  and  ./bx-sch-4-nbs-front
+# and deploy/.env + deploy/bench-auth.caddy (see README.md: new-secrets.sh creates both).
+name: nailsbyscooby
+
+services:
+  web:
+    build: ../../bx-sch-4-nbs-front
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./bench-auth.caddy:/etc/caddy/bench-auth.caddy:ro
+      # The HTTPS certificates survive restarts (Let's Encrypt limits how often they are issued).
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+  api:
+    build: ..
+    restart: unless-stopped
+    environment: &app-env
+      DATABASE_URL: mysql+pymysql://${MYSQL_USER}:${MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      HASH_PEPPER: ${HASH_PEPPER}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      FRONTEND_URL: ${PUBLIC_URL}
+      CORS_ORIGINS: '["${PUBLIC_URL}"]'
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
+      EMAIL_FROM: ${EMAIL_FROM:-Nails by Scooby <no-reply@nailsbyscooby.com>}
+      STUDIO_NOTIFICATION_EMAIL: ${STUDIO_NOTIFICATION_EMAIL}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Reminders and automatic cancellations, at every :00 and :30.
+  scheduler:
+    build: ..
+    restart: unless-stopped
+    command: ["python", "-m", "bx_sch_4_nbs.scripts.scheduler"]
+    environment: *app-env
+    depends_on:
+      - api
+
+  db:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      TZ: UTC
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD}", "--silent"]
+      interval: 5s
+      retries: 30
+
+  # A copy of the database every day, the last 14 kept in deploy/backups.
+  backup:
+    image: mysql:8.0
+    restart: unless-stopped
+    entrypoint: ["sh", "/backup.sh"]
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      KEEP_DAYS: 14
+    volumes:
+      - ./backup.sh:/backup.sh:ro
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Test site only: catches every email (see them at /mail).
+  # For real emails, set SMTP_HOST etc. in .env (Brevo) and stop this one.
+  mailpit:
+    image: axllent/mailpit
+    restart: unless-stopped
+    environment:
+      MP_WEBROOT: /mail
+
+volumes:
+  mysql_data:
+  caddy_data:
+  caddy_config:
