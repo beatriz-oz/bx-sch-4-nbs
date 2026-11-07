@@ -40,6 +40,9 @@ class Settings(BaseSettings):
         Service.MAINTENANCE: 150,
         Service.REMOVAL: 60,
         Service.OTHER: 60,
+        Service.PRESS_ON: 180,
+        # Only a fallback: a trade always has the duration she set when booking it.
+        Service.TRADING: 180,
     }
     # The deposit (also written in the policies). Counted as income when the studio keeps it.
     deposit_amount: Decimal = Decimal("10.00")

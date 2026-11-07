@@ -5,19 +5,21 @@ from email.message import EmailMessage
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.models import Appointment
-from bx_sch_4_nbs.database.types import Service
+from bx_sch_4_nbs.database.types import STUDIO_ONLY_SERVICES
 
 logger = logging.getLogger(__name__)
 
 
 def booking_details(appointment: Appointment) -> str:
     lines = [f"Service: {appointment.service.value}"]
-    if appointment.service == Service.OTHER and appointment.notes:
+    if appointment.service in STUDIO_ONLY_SERVICES and appointment.notes:
         lines.append(f"Details: {appointment.notes}")
     if appointment.nail_size is not None:
         lines.append(f"Nail size: {appointment.nail_size.value}")
     if appointment.nail_art_level is not None:
         lines.append(f"Nail art: {appointment.nail_art_level.value}")
+    if appointment.trade_item is not None:
+        lines.append(f"Trade: {appointment.trade_item.value}")
     if appointment.broken_nails:
         lines.append(f"Broken nails: {appointment.broken_nails}")
     if appointment.has_other_professional_nails:

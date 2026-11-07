@@ -8,7 +8,7 @@ from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.models import Appointment
 from bx_sch_4_nbs.database.queries.expenses import list_expenses
 from bx_sch_4_nbs.database.queries.schedule import duration_minutes
-from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, ExpenseCategory, Service
+from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, ExpenseCategory, Service, TradeItem
 from bx_sch_4_nbs.helpers.common import to_studio_time, to_utc
 
 # Cancellations where the studio keeps the deposit (as the policies say).
@@ -33,6 +33,10 @@ class MonthReport:
     cancellations: int = 0
     by_service: dict[Service, ServiceTotals] = field(default_factory=dict)
     expenses_by_category: dict[ExpenseCategory, Decimal] = field(default_factory=dict)
+    # Trades are apart: no money, so they stay out of completed / worked_minutes ("per hour worked").
+    trades: int = 0
+    trade_minutes: int = 0
+    trades_by_item: dict[TradeItem, ServiceTotals] = field(default_factory=dict)
 
     @property
     def kept_deposits_revenue(self) -> Decimal:
@@ -76,7 +80,14 @@ def year_report(session: Session, year: int) -> list[MonthReport]:
     for appointment in appointments:
         report = months[to_studio_time(appointment.scheduled_at).month - 1]
 
-        if appointment.status == AppointmentStatus.COMPLETED:
+        if appointment.status == AppointmentStatus.COMPLETED and appointment.service == Service.TRADING:
+            minutes = duration_minutes(appointment)
+            report.trades += 1
+            report.trade_minutes += minutes
+            item = report.trades_by_item.setdefault(appointment.trade_item or TradeItem.NAILS, ServiceTotals())
+            item.completed += 1
+            item.worked_minutes += minutes
+        elif appointment.status == AppointmentStatus.COMPLETED:
             minutes = duration_minutes(appointment)
             price = appointment.final_price if appointment.final_price is not None else appointment.estimated_price
             report.completed += 1

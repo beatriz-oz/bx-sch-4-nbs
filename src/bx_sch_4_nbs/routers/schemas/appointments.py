@@ -5,8 +5,16 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
-from bx_sch_4_nbs.database.queries.schedule import ACTIVE_STATUSES, is_change_window_open
-from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, NailArtLevel, NailSize, Service
+from bx_sch_4_nbs.database.queries.schedule import ACTIVE_STATUSES, is_change_window_open, is_deposit_required
+from bx_sch_4_nbs.database.types import (
+    STUDIO_ONLY_SERVICES,
+    AppointmentStatus,
+    CancellationReason,
+    NailArtLevel,
+    NailSize,
+    Service,
+    TradeItem,
+)
 from bx_sch_4_nbs.helpers.common import to_studio_time, to_utc, utc_now
 from bx_sch_4_nbs.routers.schemas.types import StudioDatetime, UtcDatetime
 
@@ -40,7 +48,7 @@ class ServiceDetails(BaseModel):
 
     @model_validator(mode="after")
     def validate_service_fields(self) -> Self:
-        if self.service == Service.OTHER:
+        if self.service in STUDIO_ONLY_SERVICES:
             raise ValueError("This service can only be booked by the studio.")
         if self.service == Service.REMOVAL:
             if self.nail_size is not None or self.nail_art_level is not None or self.broken_nails:
@@ -85,6 +93,7 @@ class AppointmentResult(BaseModel):
     service: Service
     nail_size: NailSize | None
     nail_art_level: NailArtLevel | None
+    trade_item: TradeItem | None
     broken_nails: int
     has_other_professional_nails: bool
     estimated_price: Decimal
@@ -98,11 +107,17 @@ class AppointmentResult(BaseModel):
 
     @computed_field
     @property
+    def deposit_required(self) -> bool:
+        """Whether this service needs the deposit at all (the rule stays here, not in the frontend)."""
+        return is_deposit_required(self.service)
+
+    @computed_field
+    @property
     def can_change(self) -> bool:
         """Whether the client can still change it herself (the rule stays here, not in the frontend)."""
         return (
             self.status in ACTIVE_STATUSES
-            and self.service != Service.OTHER
+            and self.service not in STUDIO_ONLY_SERVICES
             and is_change_window_open(to_utc(self.scheduled_at), utc_now())
         )
 
