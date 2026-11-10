@@ -1,0 +1,59 @@
+# The web server of the deploy (Caddy): HTTPS, the two languages, and the way in to the API.
+# The same rules as scripts/serve-locales.mjs in the front end (the local "npm run preview").
+#
+# {$SITE_ADDRESS} comes from deploy/.env:
+#   - a domain (nailsbyscooby-teste.duckdns.org): Caddy gets and renews a free Let's Encrypt certificate
+#   - :80 to try it on a computer, without HTTPS (open http://localhost:<HTTP_PORT>)
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Test site ("bench"): out of search engines, and behind a password (deploy/bench-auth.caddy).
+	header X-Robots-Tag "noindex, nofollow"
+	import /etc/caddy/bench-auth.caddy
+
+	# The API.
+	handle /v1/* {
+		reverse_proxy api:8000
+	}
+
+	# The test emails (Mailpit): nothing reaches real clients from the test site.
+	handle /mail* {
+		reverse_proxy mailpit:8025
+	}
+
+	# Each language is its own copy of the site; unknown paths get its index.html (Angular routes them).
+	redir /pt-PT /pt-PT/
+	redir /en /en/
+	handle /pt-PT/* {
+		root * /srv
+		try_files {path} /pt-PT/index.html
+		file_server
+	}
+	handle /en/* {
+		root * /srv
+		try_files {path} /en/index.html
+		file_server
+	}
+
+	# "/" and old links without a language: the language chosen on the site (cookie nbs_lang),
+	# otherwise the browser's (Portuguese unless it prefers English).
+	@choseEnglish header_regexp Cookie (^|;\s*)nbs_lang=en(;|$)
+	@chosePortuguese header_regexp Cookie (^|;\s*)nbs_lang=pt-PT(;|$)
+	@prefersEnglish header_regexp Accept-Language ^\s*en
+	handle {
+		route {
+			redir @choseEnglish /en{uri} 302
+			redir @chosePortuguese /pt-PT{uri} 302
+			redir @prefersEnglish /en{uri} 302
+			# "*": without it, Caddy would read the first value as a path filter, not as the target.
+			redir * /pt-PT{uri} 302
+		}
+	}
+
+	# Built files have a hash in their name: they never change, so browsers can keep them.
+	@hashed path_regexp -[A-Za-z0-9]{8}\.(js|css)$
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@pages path *.html */
+	header @pages Cache-Control "no-cache"
+}

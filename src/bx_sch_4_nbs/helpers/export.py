@@ -17,7 +17,7 @@ from openpyxl.utils import get_column_letter
 from bx_sch_4_nbs.database.models import Appointment, User
 from bx_sch_4_nbs.database.queries.reports import keeps_deposit
 from bx_sch_4_nbs.database.queries.schedule import duration_minutes
-from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, Service
+from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, Service, TradeItem
 from bx_sch_4_nbs.helpers.common import to_studio_time
 
 Language = Literal["pt", "en"]
@@ -82,14 +82,32 @@ SERVICES: dict[Language, dict[Service, str]] = {
         Service.MAINTENANCE: "Manutenção",
         Service.REMOVAL: "Remoção",
         Service.OTHER: "Outro",
+        Service.PRESS_ON: "Press-on",
+        Service.TRADING: "Troca",
     },
     "en": {
         Service.APPLICATION: "Application",
         Service.MAINTENANCE: "Maintenance",
         Service.REMOVAL: "Removal",
         Service.OTHER: "Other",
+        Service.PRESS_ON: "Press-on",
+        Service.TRADING: "Trading",
     },
 }
+
+TRADE_ITEMS: dict[Language, dict[TradeItem, str]] = {
+    "pt": {TradeItem.NAILS: "unhas", TradeItem.PRESS_ONS: "press-ons"},
+    "en": {TradeItem.NAILS: "nails", TradeItem.PRESS_ONS: "press-ons"},
+}
+
+
+def service_label(appointment: Appointment, language: Language) -> str:
+    """'Aplicação', or for a trade what was traded: 'Troca (press-ons)'."""
+    label = SERVICES[language][appointment.service]
+    if appointment.trade_item is not None:
+        label += f" ({TRADE_ITEMS[language][appointment.trade_item]})"
+    return label
+
 
 STATUSES: dict[Language, dict[AppointmentStatus, str]] = {
     "pt": {
@@ -173,7 +191,7 @@ def appointments_workbook(rows: list[tuple[Appointment, User]], language: Langua
                 when.time(),
                 f"{user.name} {user.last_name}",
                 f"@{user.instagram}" if user.instagram else "",
-                SERVICES[language][appointment.service],
+                service_label(appointment, language),
                 appointment.nail_size.value if appointment.nail_size else "",
                 appointment.nail_art_level.value if appointment.nail_art_level else "",
                 appointment.broken_nails or None,

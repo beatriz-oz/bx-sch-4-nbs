@@ -59,3 +59,18 @@ class UserResult(BaseModel):
 
 class ProfileUpdate(BaseModel):
     wants_agenda_emails: bool
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(max_length=128, json_schema_extra={"format": "password"})
+    new_password: Password
+
+
+class PasswordResetStart(BaseModel):
+    phone: PhoneNumber
+
+
+class PasswordResetConfirm(BaseModel):
+    phone: PhoneNumber
+    code: str = Field(pattern=r"^\d{6}$")
+    password: Password

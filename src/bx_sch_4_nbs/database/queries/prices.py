@@ -7,7 +7,7 @@ from sqlmodel import Session, col, func, select
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.exceptions import ResourceDoesNotExistError
 from bx_sch_4_nbs.database.models import AddonPrice, Appointment, NailArtPrice, ServicePrice
-from bx_sch_4_nbs.database.types import Addon, AppointmentStatus, NailArtLevel, NailSize, Service
+from bx_sch_4_nbs.database.types import STUDIO_ONLY_SERVICES, Addon, AppointmentStatus, NailArtLevel, NailSize, Service
 
 
 @dataclass
@@ -110,8 +110,8 @@ def calculate_price(
     extra_charms: int = 0,
     complete_removal: bool = False,
 ) -> Decimal:
-    if service == Service.OTHER:
-        # The studio sets the price of OTHER; callers must handle it before calling this.
+    if service in STUDIO_ONLY_SERVICES:
+        # The studio sets these prices (OTHER, press-ons); callers must handle them before calling this.
         raise ValueError("There is no price table for this service.")
 
     if service == Service.REMOVAL:

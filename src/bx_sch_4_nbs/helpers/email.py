@@ -5,19 +5,21 @@ from email.message import EmailMessage
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.models import Appointment
-from bx_sch_4_nbs.database.types import Service
+from bx_sch_4_nbs.database.types import STUDIO_ONLY_SERVICES
 
 logger = logging.getLogger(__name__)
 
 
 def booking_details(appointment: Appointment) -> str:
     lines = [f"Service: {appointment.service.value}"]
-    if appointment.service == Service.OTHER and appointment.notes:
+    if appointment.service in STUDIO_ONLY_SERVICES and appointment.notes:
         lines.append(f"Details: {appointment.notes}")
     if appointment.nail_size is not None:
         lines.append(f"Nail size: {appointment.nail_size.value}")
     if appointment.nail_art_level is not None:
         lines.append(f"Nail art: {appointment.nail_art_level.value}")
+    if appointment.trade_item is not None:
+        lines.append(f"Trade: {appointment.trade_item.value}")
     if appointment.broken_nails:
         lines.append(f"Broken nails: {appointment.broken_nails}")
     if appointment.has_other_professional_nails:
@@ -71,6 +73,34 @@ def send_verification_code(to: str, code: str) -> None:
             f"Your verification code is: {code}\n\n"
             "It expires in 10 minutes.\n"
             "If you did not request this code, please ignore this email."
+        ),
+    )
+
+
+def send_password_reset_code(to: str, code: str) -> None:
+    send_email(
+        to=to,
+        subject="Reset your password - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            f"Your code to choose a new password is: {code}\n\n"
+            "It expires in 10 minutes.\n"
+            "If you did not ask to reset your password, ignore this email: your password stays the same."
+        ),
+    )
+
+
+def send_password_changed(to: str) -> None:
+    send_email(
+        to=to,
+        subject="Your password was changed - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            "The password of your Nails by Scooby account was just changed, "
+            "and every other device was logged out.\n\n"
+            "If it was you, there is nothing to do.\n"
+            'If it was not you, choose a new password with "Forgot your password?" on the login page '
+            "and send a message to @nailsbyscooby on Instagram."
         ),
     )
 

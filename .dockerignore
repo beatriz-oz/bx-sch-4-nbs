@@ -1,0 +1,12 @@
+# Only what the image needs: never secrets, caches or the local virtualenv.
+.env
+**/.env
+.venv
+**/__pycache__
+.ruff_cache
+.pytest_cache
+.git
+jenkins
+deploy
+*.md
+!README.md

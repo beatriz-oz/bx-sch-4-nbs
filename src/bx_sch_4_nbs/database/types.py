@@ -11,6 +11,20 @@ class Service(str, Enum):
     MAINTENANCE = "Maintenance"
     REMOVAL = "Removal"
     OTHER = "Other"
+    PRESS_ON = "Press-on"
+    TRADING = "Trading"
+
+
+class TradeItem(str, Enum):
+    """What the studio gives in a trade (a service in exchange for something else, not money)."""
+
+    NAILS = "Nails"
+    PRESS_ONS = "Press-ons"
+
+
+# Booked only by the studio, at the price she sets: no price table and no deposit.
+# A trade (TRADING) is one of them, at no price at all.
+STUDIO_ONLY_SERVICES = (Service.OTHER, Service.PRESS_ON, Service.TRADING)
 
 
 class NailSize(str, Enum):
@@ -32,6 +46,7 @@ class AppointmentStatus(str, Enum):
 class VerificationPurpose(str, Enum):
     CHECKIN = "Checkin"
     ACTIVATION = "Activation"
+    PASSWORD_RESET = "Password reset"
 
 
 class NailArtLevel(str, Enum):
@@ -56,4 +71,5 @@ class ExpenseCategory(str, Enum):
     PRODUCTS = "Products"
     MATERIAL = "Material"
     BILLS = "Bills"
+    PRESS_ONS = "Press-ons"
     OTHER = "Other"

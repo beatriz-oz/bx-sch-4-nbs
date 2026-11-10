@@ -6,6 +6,7 @@ from sqlmodel import Session, col, select
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.exceptions import (
+    AppointmentChangeNotAllowedError,
     AppointmentNotActiveError,
     AppointmentTooEarlyError,
     CancellationNotAllowedError,
@@ -14,11 +15,13 @@ from bx_sch_4_nbs.database.exceptions import (
 from bx_sch_4_nbs.database.models import Appointment, User
 from bx_sch_4_nbs.database.queries import changes, prices, schedule
 from bx_sch_4_nbs.database.types import (
+    STUDIO_ONLY_SERVICES,
     AppointmentStatus,
     CancellationReason,
     NailArtLevel,
     NailSize,
     Service,
+    TradeItem,
     UserRole,
 )
 from bx_sch_4_nbs.helpers.security import hash_email, hash_phone, normalize_phone
@@ -117,6 +120,8 @@ def complete_appointment(
     approve_client: bool = False,
 ) -> tuple[Appointment, User]:
     appointment, user = _get_appointment_to_finish(session, appointment_id, now)
+    if appointment.service == Service.TRADING and final_price != 0:
+        raise AppointmentChangeNotAllowedError("A trade has no price: complete it with 0.")
 
     if approve_client and user.approved_at is None:
         user.approved_at = now
@@ -124,7 +129,9 @@ def complete_appointment(
 
     appointment.status = AppointmentStatus.COMPLETED
     appointment.final_price = final_price
-    appointment.duration_minutes = duration_minutes
+    # Not recorded: keep what was there (the planned duration of a trade).
+    if duration_minutes is not None:
+        appointment.duration_minutes = duration_minutes
     appointment.completion_notes = completion_notes
     session.add(appointment)
     session.flush()
@@ -157,7 +164,7 @@ def estimate_final_price(
     if not appointment:
         raise ResourceDoesNotExistError("The appointment does not exist")
 
-    if appointment.service == Service.OTHER:
+    if appointment.service in STUDIO_ONLY_SERVICES:
         return appointment.service, appointment.estimated_price
 
     # What was not changed in the form keeps the value chosen when booking.
@@ -200,6 +207,8 @@ def book_appointment_by_studio(
     notes: str | None,
     policy_id: int,
     now: datetime,
+    trade_item: TradeItem | None = None,
+    duration_minutes: int | None = None,
 ) -> Appointment:
     # A squeeze-in was just agreed with the client, so attendance is already confirmed.
     is_squeeze_in = now < scheduled_at and is_within_reminder_window(scheduled_at, now)
@@ -218,6 +227,8 @@ def book_appointment_by_studio(
         policies_accepted_at=None,
         notes=notes,
         attendance_confirmed_at=now if is_squeeze_in else None,
+        trade_item=trade_item,
+        duration_minutes=duration_minutes,
     )
 
 
@@ -234,6 +245,8 @@ def change_appointment_by_studio(
     estimated_price: Decimal,
     notes: str | None,
     now: datetime,
+    trade_item: TradeItem | None = None,
+    duration_minutes: int | None = None,
 ) -> changes.ChangedAppointment:
     """The studio changes anything, at any time. The price is the one she sets."""
     appointment = changes.get_active_appointment(session, appointment_id)
@@ -250,6 +263,9 @@ def change_appointment_by_studio(
     appointment.has_other_professional_nails = has_other_professional_nails
     appointment.estimated_price = estimated_price
     appointment.notes = notes
+    appointment.trade_item = trade_item
+    # Still active, so no duration was recorded yet: only a trade has one (planned).
+    appointment.duration_minutes = duration_minutes
     session.add(appointment)
     session.flush()
     return changes.ChangedAppointment(appointment, previous)
@@ -307,14 +323,14 @@ def mark_deposit_refunded(session: Session, appointment_id: int, now: datetime) 
 
 
 def pending_deposits(session: Session, now: datetime) -> list[tuple[Appointment, User]]:
-    """Upcoming appointments still waiting for the deposit (OTHER never needs one)."""
+    """Upcoming appointments still waiting for the deposit (studio-only services never need one)."""
     return list(
         session.exec(
             select(Appointment, User)
             .join(User, col(Appointment.user_id) == col(User.id))
             .where(
                 Appointment.status == AppointmentStatus.SCHEDULED,
-                Appointment.service != Service.OTHER,
+                col(Appointment.service).not_in(STUDIO_ONLY_SERVICES),
                 col(Appointment.scheduled_at) > now,
             )
             .order_by(col(Appointment.scheduled_at))

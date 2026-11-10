@@ -31,12 +31,14 @@ from bx_sch_4_nbs.database.models import (
 )
 from bx_sch_4_nbs.database.queries.prices import calculate_price
 from bx_sch_4_nbs.database.types import (
+    STUDIO_ONLY_SERVICES,
     AppointmentStatus,
     CancellationReason,
     ExpenseCategory,
     NailArtLevel,
     NailSize,
     Service,
+    TradeItem,
 )
 from bx_sch_4_nbs.helpers.common import to_studio_time, to_utc, utc_now
 from bx_sch_4_nbs.helpers.security import encrypt_email, encrypt_phone, hash_email, hash_password, hash_phone
@@ -74,8 +76,18 @@ SIZES = [
     NailSize.XXLARGE,
 ]
 ART = [NailArtLevel.LEVEL_1, NailArtLevel.LEVEL_2, NailArtLevel.LEVEL_2, NailArtLevel.LEVEL_3]
-SERVICES = [Service.APPLICATION] * 4 + [Service.MAINTENANCE] * 5 + [Service.REMOVAL] + [Service.OTHER]
+SERVICES = (
+    [Service.APPLICATION] * 4
+    + [Service.MAINTENANCE] * 5
+    + [Service.REMOVAL]
+    + [Service.OTHER, Service.PRESS_ON, Service.TRADING]
+)
 HANDLES = [handle for _, _, handle, _, _ in DEMO_CLIENTS]
+DEMO_NOTES = {
+    Service.OTHER: "Repair of 1 broken nail",
+    Service.PRESS_ON: "Almond shape, nude with chrome",
+    Service.TRADING: "Trade: photos of the studio for Instagram",
+}
 
 # (day of the month, description, category, amount): repeated every month of the demo.
 DEMO_EXPENSES = [
@@ -130,7 +142,7 @@ def create_clients(session: Session, now: datetime) -> list[User]:
 
 def booking_details(rng: random.Random) -> tuple[Service, NailSize | None, NailArtLevel | None, int]:
     service = rng.choice(SERVICES)
-    if service in (Service.REMOVAL, Service.OTHER):
+    if service in (Service.REMOVAL, *STUDIO_ONLY_SERVICES):
         return service, None, None, 0
     return service, rng.choice(SIZES), rng.choice(ART), rng.choice([0, 0, 0, 1, 2])
 
@@ -172,9 +184,14 @@ def main() -> None:
                 client = rng.choice(clients)
                 if client.id is None:
                     raise RuntimeError("Client without id.")
+                # Studio-only services have the price she sets: a few typical ones here.
                 estimated = (
                     Decimal(rng.choice([5, 8, 15]))
                     if service == Service.OTHER
+                    else Decimal(rng.choice([30, 35, 40, 45]))
+                    if service == Service.PRESS_ON
+                    else Decimal(0)
+                    if service == Service.TRADING
                     else calculate_price(
                         session, service=service, nail_size=size, nail_art_level=art, broken_nails=broken
                     )
@@ -193,9 +210,11 @@ def main() -> None:
                     policy_id=policy.id,
                     policies_accepted_at=booked,
                     created_at=min(booked, now),
-                    notes="Repair of 1 broken nail" if service == Service.OTHER else None,
+                    notes=DEMO_NOTES.get(service),
+                    trade_item=rng.choice(list(TradeItem)) if service == Service.TRADING else None,
+                    duration_minutes=rng.choice([90, 120, 150]) if service == Service.TRADING else None,
                 )
-                needs_deposit = service != Service.OTHER
+                needs_deposit = service not in STUDIO_ONLY_SERVICES
 
                 if past:
                     outcome = rng.random()
@@ -205,8 +224,9 @@ def main() -> None:
                         appointment.status = AppointmentStatus.COMPLETED
                         appointment.attendance_confirmed_at = scheduled_at - timedelta(hours=20)
                         extras = Decimal("0.50") * rng.choice([0, 0, 2, 4, 6])
-                        appointment.final_price = estimated + extras
-                        expected = settings.service_durations_minutes[service]
+                        # A trade has no price, so no extras either.
+                        appointment.final_price = estimated if service == Service.TRADING else estimated + extras
+                        expected = appointment.duration_minutes or settings.service_durations_minutes[service]
                         appointment.duration_minutes = max(30, expected + rng.choice([-30, -15, 0, 0, 15, 30, 45]))
                     elif outcome < 0.86:
                         appointment.status = AppointmentStatus.NO_SHOW

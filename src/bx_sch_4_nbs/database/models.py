@@ -12,6 +12,7 @@ from bx_sch_4_nbs.database.types import (
     NailArtLevel,
     NailSize,
     Service,
+    TradeItem,
     UserRole,
     VerificationPurpose,
 )
@@ -62,6 +63,11 @@ class User(SQLModel, table=True):
         description="True after the client confirms the email code",
         default=False,
         nullable=False,
+    )
+    password_changed_at: datetime | None = Field(
+        description="When the password was last set (UTC): login tokens issued before it stop working",
+        default=None,
+        nullable=True,
     )
     created_at: datetime | None = Field(
         description="Timestamp of when the record was created",
@@ -123,8 +129,11 @@ class Appointment(SQLModel, table=True):
     estimated_price: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
     final_price: Decimal | None = Field(default=None, sa_column=Column(Numeric(10, 2), nullable=True))
     duration_minutes: int | None = Field(
-        default=None, description="Real duration, recorded when the appointment is completed", nullable=True
+        default=None,
+        description="Real duration, recorded when completed; for a trade, also the one planned when booking",
+        nullable=True,
     )
+    trade_item: TradeItem | None = Field(default=None, description="Trades only: nails or press-ons", nullable=True)
     policy_id: int = Field(foreign_key="policies.id", nullable=False, ondelete="RESTRICT")
     policies_accepted_at: datetime | None = Field(
         default=None,

@@ -1,0 +1,30 @@
+# The local Jenkins:  docker compose up -d --build   (from this folder), then http://localhost:8080
+name: nbs-jenkins
+
+services:
+  jenkins:
+    build: .
+    image: nbs-jenkins:local
+    container_name: nbs-jenkins
+    ports:
+      - "8080:8080"
+    env_file: .env
+    volumes:
+      # Jobs, build history and caches survive restarts and rebuilds.
+      - jenkins_home:/var/jenkins_home
+      # The host's Docker: the pipelines start their MySQL and Mailpit next to this container.
+      - /var/run/docker.sock:/var/run/docker.sock
+    # The socket belongs to group 0 (root) inside Docker Desktop: joining it is enough to use it.
+    group_add:
+      - "0"
+    networks:
+      - ci
+    restart: unless-stopped
+
+networks:
+  # The pipelines put their MySQL and Mailpit on this network, so Jenkins reaches them by name.
+  ci:
+    name: nbs-ci
+
+volumes:
+  jenkins_home:
