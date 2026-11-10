@@ -1,5 +1,5 @@
 # ruff: noqa: DTZ001
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -7,10 +7,18 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from bx_sch_4_nbs.database.helpers import engine, get_session
-from bx_sch_4_nbs.database.models import Appointment, Policy, User
-from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, Service, UserRole
+from bx_sch_4_nbs.database.models import Appointment, Expense, Policy, User
+from bx_sch_4_nbs.database.types import (
+    AppointmentStatus,
+    CancellationReason,
+    ExpenseCategory,
+    Service,
+    TradeItem,
+    UserRole,
+)
 from bx_sch_4_nbs.helpers.authentication import create_access_token
 from bx_sch_4_nbs.helpers.common import to_utc, utc_now
+from bx_sch_4_nbs.helpers.security import encrypt_email, encrypt_phone, hash_email, hash_phone
 from bx_sch_4_nbs.main import app
 
 connection = engine.connect()
@@ -121,6 +129,102 @@ check(
 check(
     "meses vazios com zero",
     months.get(6, {}).get("completed") == 0 and Decimal(str(months.get(6, {}).get("total_revenue"))) == 0,
+)
+
+
+# --- clientes, dias trabalhados e medias (2032, um ano so para isto) ---
+def make_client(name: str, phone: str) -> int:
+    user = User(
+        name=name,
+        last_name="Report",
+        email_encrypted=encrypt_email(f"{name.lower()}@report.test"),
+        email_hash=hash_email(f"{name.lower()}@report.test"),
+        phone_encrypted=encrypt_phone(phone),
+        phone_hash=hash_phone(phone),
+    )
+    session.add(user)
+    session.flush()
+    assert user.id is not None
+    return user.id
+
+
+def done(user_id: int, when_utc: datetime, price: int, minutes: int, service: Service = Service.APPLICATION) -> None:
+    session.add(
+        Appointment(
+            user_id=user_id,
+            scheduled_at=when_utc,
+            status=AppointmentStatus.COMPLETED,
+            service=service,
+            estimated_price=Decimal(price),
+            final_price=Decimal(price),
+            duration_minutes=minutes,
+            policy_id=POLICY,
+            trade_item=TradeItem.NAILS if service == Service.TRADING else None,
+        )
+    )
+
+
+ana = make_client("Ana", "+351915333001")
+bia = make_client("Bia", "+351915333002")
+cris = make_client("Cris", "+351915333003")
+done(ana, lisbon(2032, 1, 5, 10), 10, 60, Service.REMOVAL)
+done(ana, lisbon(2032, 1, 5, 14), 40, 120)  # a mesma cliente, no mesmo dia
+done(ana, lisbon(2032, 1, 20, 10), 50, 180)  # e outra vez no mesmo mes
+done(bia, lisbon(2032, 1, 20, 14), 30, 120)  # outra cliente, num dia que ja conta
+done(cris, lisbon(2032, 1, 25, 10), 0, 120, Service.TRADING)  # troca: fica de fora
+done(ana, lisbon(2032, 2, 3, 10), 40, 120)
+session.add(Expense(day=date(2032, 1, 15), description="Geis", category=ExpenseCategory.PRODUCTS, amount=Decimal(30)))
+session.commit()
+
+response = client.get("/v1/admin/reports", params={"year": 2032}, headers=ADMIN)
+detail = response.json().get("detail", {})
+january = detail.get("months", [{}])[0]
+totals = detail.get("totals", {})
+
+
+def money(value: object) -> Decimal | None:
+    return None if value is None else Decimal(str(value))
+
+
+check("janeiro: 2 clientes (a Ana veio 3 vezes, conta 1; a troca nao conta)", january.get("clients") == 2, january)
+check("janeiro: 2 dias trabalhados (dia 5 e 20; o dia so com troca nao conta)", january.get("days_worked") == 2)
+check("por hora: 130 EUR / 8h = 16.25", money(january.get("revenue_per_hour")) == Decimal("16.25"), january)
+check("ganho medio por cliente: 130 / 2 = 65", money(january.get("average_per_client")) == Decimal(65))
+check("ganho medio por dia: 130 / 2 = 65", money(january.get("average_per_day")) == Decimal(65))
+check("custo por cliente: 30 EUR de despesas / 2 = 15", money(january.get("cost_per_client")) == Decimal(15))
+check("lucro por cliente: 65 - 15 = 50", money(january.get("profit_per_client")) == Decimal(50))
+march_2032 = detail.get("months", [{}] * 3)[2]
+check(
+    "mes vazio: sem medias (null, nao 0)",
+    march_2032.get("clients") == 0
+    and all(
+        march_2032.get(key) is None
+        for key in ("revenue_per_hour", "average_per_client", "average_per_day", "cost_per_client", "profit_per_client")
+    ),
+    march_2032,
+)
+check(
+    "ano: 2 clientes e 3 dias (juntados, nao somados: jan 2 + fev 1 clientes daria 3)",
+    totals.get("clients") == 2 and totals.get("days_worked") == 3,
+    totals,
+)
+check(
+    "ano: 170 EUR em 10h = 17/h, 85 por cliente, 15 de custo e 70 de lucro por cliente",
+    money(totals.get("revenue_per_hour")) == Decimal(17)
+    and money(totals.get("average_per_client")) == Decimal(85)
+    and money(totals.get("cost_per_client")) == Decimal(15)
+    and money(totals.get("profit_per_client")) == Decimal(70),
+    totals,
+)
+check(
+    "ano: totais de concluidas, horas, receita, despesas e lucro",
+    totals.get("completed") == 5
+    and totals.get("worked_minutes") == 600
+    and money(totals.get("total_revenue")) == Decimal(170)
+    and money(totals.get("expenses")) == Decimal(30)
+    and money(totals.get("profit")) == Decimal(140)
+    and totals.get("trades") == 1,
+    totals,
 )
 
 # --- duration recorded at completion ---

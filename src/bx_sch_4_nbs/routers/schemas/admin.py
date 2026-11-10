@@ -274,7 +274,28 @@ class TradeReport(BaseModel):
     worked_minutes: int
 
 
-class MonthReportResult(BaseModel):
+class PeriodSummary(BaseModel):
+    """Clients, days and the averages of a period. Each value is null when there is nothing to divide by."""
+
+    clients: int
+    days_worked: int
+    revenue_per_hour: Decimal | None
+    average_per_client: Decimal | None
+    average_per_day: Decimal | None
+    cost_per_client: Decimal | None
+    profit_per_client: Decimal | None
+
+
+class YearTotals(PeriodSummary):
+    completed: int
+    worked_minutes: int
+    total_revenue: Decimal
+    expenses: Decimal
+    profit: Decimal
+    trades: int
+
+
+class MonthReportResult(PeriodSummary):
     month: int
     completed: int
     worked_minutes: int
@@ -298,6 +319,7 @@ class YearReport(BaseModel):
     year: int
     deposit_amount: Decimal
     months: list[MonthReportResult]
+    totals: YearTotals
 
 
 class ClientNotes(BaseModel):

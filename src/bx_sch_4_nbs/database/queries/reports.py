@@ -22,9 +22,18 @@ class ServiceTotals:
     revenue: Decimal = Decimal(0)
 
 
+CENT = Decimal("0.01")
+
+
+def _per(amount: Decimal, count: int) -> Decimal | None:
+    """amount / count in euros and cents; None when there is nothing to divide by (no "0 €" that means nothing)."""
+    return (amount / count).quantize(CENT) if count else None
+
+
 @dataclass
-class MonthReport:
-    month: int
+class PeriodReport:
+    """The numbers of a period (a month, or the whole year)."""
+
     completed: int = 0
     worked_minutes: int = 0
     services_revenue: Decimal = Decimal(0)
@@ -37,6 +46,47 @@ class MonthReport:
     trades: int = 0
     trade_minutes: int = 0
     trades_by_item: dict[TradeItem, ServiceTotals] = field(default_factory=dict)
+    # Who was served and on which days (Lisbon dates), from the completed paid appointments.
+    # Sets, not counts: a client who came twice is one client, and two appointments on one day are one day.
+    # That is also why the year cannot just add up its months: it joins the sets.
+    client_ids: set[int] = field(default_factory=set)
+    days: set[date] = field(default_factory=set)
+
+    @property
+    def clients(self) -> int:
+        return len(self.client_ids)
+
+    @property
+    def days_worked(self) -> int:
+        return len(self.days)
+
+    @property
+    def revenue_per_hour(self) -> Decimal | None:
+        """Income from services per hour worked (kept deposits need no work, so they stay out)."""
+        if not self.worked_minutes:
+            return None
+        return (self.services_revenue * 60 / self.worked_minutes).quantize(CENT)
+
+    @property
+    def average_per_client(self) -> Decimal | None:
+        """What each client paid on average for her services in the period."""
+        return _per(self.services_revenue, self.clients)
+
+    @property
+    def average_per_day(self) -> Decimal | None:
+        return _per(self.services_revenue, self.days_worked)
+
+    @property
+    def cost_per_client(self) -> Decimal | None:
+        """The period's expenses split among the clients served."""
+        return _per(self.expenses, self.clients)
+
+    @property
+    def profit_per_client(self) -> Decimal | None:
+        """What is left of each client after her share of the expenses (e.g. 40 paid - 12 of material = 28)."""
+        if self.average_per_client is None or self.cost_per_client is None:
+            return None
+        return self.average_per_client - self.cost_per_client
 
     @property
     def kept_deposits_revenue(self) -> Decimal:
@@ -53,6 +103,30 @@ class MonthReport:
     @property
     def profit(self) -> Decimal:
         return self.total_revenue - self.expenses
+
+
+@dataclass
+class MonthReport(PeriodReport):
+    month: int = 0
+
+
+def whole_year(months: list[MonthReport]) -> PeriodReport:
+    """The year's totals: sums of the months, and the clients and days joined (not added up)."""
+    year = PeriodReport()
+    for month in months:
+        year.completed += month.completed
+        year.worked_minutes += month.worked_minutes
+        year.services_revenue += month.services_revenue
+        year.kept_deposits += month.kept_deposits
+        year.no_shows += month.no_shows
+        year.cancellations += month.cancellations
+        year.trades += month.trades
+        year.trade_minutes += month.trade_minutes
+        year.client_ids |= month.client_ids
+        year.days |= month.days
+        for category, amount in month.expenses_by_category.items():
+            year.expenses_by_category[category] = year.expenses_by_category.get(category, Decimal(0)) + amount
+    return year
 
 
 def keeps_deposit(appointment: Appointment) -> bool:
@@ -78,7 +152,8 @@ def year_report(session: Session, year: int) -> list[MonthReport]:
 
     months = [MonthReport(month=number) for number in range(1, 13)]
     for appointment in appointments:
-        report = months[to_studio_time(appointment.scheduled_at).month - 1]
+        local_time = to_studio_time(appointment.scheduled_at)
+        report = months[local_time.month - 1]
 
         if appointment.status == AppointmentStatus.COMPLETED and appointment.service == Service.TRADING:
             minutes = duration_minutes(appointment)
@@ -93,6 +168,8 @@ def year_report(session: Session, year: int) -> list[MonthReport]:
             report.completed += 1
             report.worked_minutes += minutes
             report.services_revenue += price
+            report.client_ids.add(appointment.user_id)
+            report.days.add(local_time.date())
             totals = report.by_service.setdefault(appointment.service, ServiceTotals())
             totals.completed += 1
             totals.worked_minutes += minutes
