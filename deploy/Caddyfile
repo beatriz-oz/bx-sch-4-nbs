@@ -8,17 +8,19 @@
 {$SITE_ADDRESS} {
 	encode zstd gzip
 
-	# Test site ("bench"): out of search engines, and behind a password (deploy/bench-auth.caddy).
+	# Test site ("bench"): open to everyone, but out of search engines.
+	# Strangers still cannot book (Instagram pre-approval) nor reach any account (passwords).
 	header X-Robots-Tag "noindex, nofollow"
-	import /etc/caddy/bench-auth.caddy
 
 	# The API.
 	handle /v1/* {
 		reverse_proxy api:8000
 	}
 
-	# The test emails (Mailpit): nothing reaches real clients from the test site.
+	# The emails caught by Mailpit hold login and reset codes: only this page stays behind
+	# the test site's password (deploy/bench-auth.caddy).
 	handle /mail* {
+		import /etc/caddy/bench-auth.caddy
 		reverse_proxy mailpit:8025
 	}
 

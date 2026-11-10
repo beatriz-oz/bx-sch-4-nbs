@@ -6,3 +6,5 @@ __pycache__/
 # Deploy: secrets and database copies stay on the server
 deploy/bench-auth.caddy
 deploy/backups/
+# Server-only Compose tweaks (e.g. less memory for MySQL on a small VM)
+deploy/compose.override.yaml
