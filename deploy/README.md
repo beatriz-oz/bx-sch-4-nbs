@@ -4,7 +4,7 @@ The whole system on one Linux server with Docker Compose ([compose.yaml](compose
 
 | Service | What it does |
 |---|---|
-| `web` | Caddy: HTTPS (Let's Encrypt, automatic), `/pt-PT/` and `/en/`, `/v1` to the API, the test site's login and `noindex` ([Caddyfile](Caddyfile)) |
+| `web` | Caddy: HTTPS (Let's Encrypt, automatic), `/pt-PT/` and `/en/`, `/v1` to the API, `noindex`, and the test site's password on `/mail` ([Caddyfile](Caddyfile)) |
 | `api` | FastAPI; runs the migrations on start |
 | `db` | MySQL 8.0 (data in the `mysql_data` volume) |
 | `scheduler` | reminders and automatic cancellations at every :00 and :30 |
@@ -39,7 +39,7 @@ mkdir -p ~/nailsbyscooby && cd ~/nailsbyscooby
 git clone -b uat https://github.com/beatriz-oz/bx-sch-4-nbs.git
 git clone -b main https://github.com/beatriz-oz/bx-sch-4-nbs-front.git
 
-# 5. Secrets: creates .env (random keys) and the test site's login
+# 5. Secrets: creates .env (random keys) and the password of /mail (the caught emails)
 cd bx-sch-4-nbs/deploy
 sh new-secrets.sh <login name>
 nano .env        # check SITE_ADDRESS and PUBLIC_URL (the DuckDNS / own domain)
