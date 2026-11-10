@@ -64,6 +64,11 @@ class User(SQLModel, table=True):
         default=False,
         nullable=False,
     )
+    password_changed_at: datetime | None = Field(
+        description="When the password was last set (UTC): login tokens issued before it stop working",
+        default=None,
+        nullable=True,
+    )
     created_at: datetime | None = Field(
         description="Timestamp of when the record was created",
         default=None,

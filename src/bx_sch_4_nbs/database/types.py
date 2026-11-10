@@ -46,6 +46,7 @@ class AppointmentStatus(str, Enum):
 class VerificationPurpose(str, Enum):
     CHECKIN = "Checkin"
     ACTIVATION = "Activation"
+    PASSWORD_RESET = "Password reset"
 
 
 class NailArtLevel(str, Enum):

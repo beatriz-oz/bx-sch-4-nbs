@@ -77,6 +77,34 @@ def send_verification_code(to: str, code: str) -> None:
     )
 
 
+def send_password_reset_code(to: str, code: str) -> None:
+    send_email(
+        to=to,
+        subject="Reset your password - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            f"Your code to choose a new password is: {code}\n\n"
+            "It expires in 10 minutes.\n"
+            "If you did not ask to reset your password, ignore this email: your password stays the same."
+        ),
+    )
+
+
+def send_password_changed(to: str) -> None:
+    send_email(
+        to=to,
+        subject="Your password was changed - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            "The password of your Nails by Scooby account was just changed, "
+            "and every other device was logged out.\n\n"
+            "If it was you, there is nothing to do.\n"
+            'If it was not you, choose a new password with "Forgot your password?" on the login page '
+            "and send a message to @nailsbyscooby on Instagram."
+        ),
+    )
+
+
 def send_agenda_published(recipients: list[str], year: int, month: int) -> None:
     if not recipients:
         return
