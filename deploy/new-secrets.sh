@@ -1,14 +1,17 @@
 #!/bin/sh
-# Creates deploy/.env (with new random secrets) and deploy/bench-auth.caddy (the test site's login).
-# Run it once on the server, from the deploy folder:   sh new-secrets.sh <login name>
+# Creates deploy/.env (with new random secrets) and, for the test site, caddy/bench-auth.caddy (its login).
+# Run it once on the server, from the deploy folder:
+#   sh new-secrets.sh production
+#   sh new-secrets.sh bench <login name>
 # It never overwrites: delete a file first to create it again (a new ENCRYPTION_KEY or HASH_PEPPER
 # makes the data already stored unreadable, so keep a copy of .env somewhere safe).
 set -eu
 cd "$(dirname "$0")"
 
-user="${1:-}"
-if [ -z "$user" ]; then
-    echo "Usage: sh new-secrets.sh <login name for the test site>" >&2
+mode="${1:-}"
+user="${2:-}"
+if [ "$mode" != production ] && { [ "$mode" != bench ] || [ -z "$user" ]; }; then
+    echo "Usage: sh new-secrets.sh production   |   sh new-secrets.sh bench <login name for the test site>" >&2
     exit 1
 fi
 
@@ -24,13 +27,24 @@ else
         -e "s|^ENCRYPTION_KEY=.*|ENCRYPTION_KEY=$fernet|" \
         -e "s|^HASH_PEPPER=.*|HASH_PEPPER=$(hex 32)|" \
         -e "s|^JWT_SECRET_KEY=.*|JWT_SECRET_KEY=$(hex 32)|" \
+        -e "s|^DEPLOY_MODE=.*|DEPLOY_MODE=$mode|" \
         .env.example > .env
+    if [ "$mode" = bench ]; then
+        sed -i "s|^COMPOSE_PROFILES=.*|COMPOSE_PROFILES=bench|" .env
+    fi
     chmod 600 .env
-    echo "Created .env with new secrets. Check SITE_ADDRESS and PUBLIC_URL in it."
+    echo "Created .env ($mode) with new secrets. Check SITE_ADDRESS and PUBLIC_URL in it."
+    if [ "$mode" = production ]; then
+        echo "Then fill in the SMTP_* lines and EMAIL_FROM (Brevo)."
+    fi
 fi
 
-if [ -e bench-auth.caddy ]; then
-    echo "bench-auth.caddy already exists: kept as it is."
+if [ "$mode" = production ]; then
+    exit 0
+fi
+
+if [ -e caddy/bench-auth.caddy ]; then
+    echo "caddy/bench-auth.caddy already exists: kept as it is."
 else
     printf "Password for the test site (login: %s): " "$user"
     stty -echo 2>/dev/null || true
@@ -41,7 +55,7 @@ else
     password=$(printf '%s' "$password" | tr -d '\r')
     # Caddy stores only a bcrypt hash of it, never the password itself.
     hash=$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$password")
-    printf 'basic_auth {\n\t%s %s\n}\n' "$user" "$hash" > bench-auth.caddy
-    chmod 600 bench-auth.caddy
-    echo "Created bench-auth.caddy."
+    printf 'basic_auth {\n\t%s %s\n}\n' "$user" "$hash" > caddy/bench-auth.caddy
+    chmod 600 caddy/bench-auth.caddy
+    echo "Created caddy/bench-auth.caddy."
 fi

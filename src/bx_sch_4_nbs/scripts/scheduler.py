@@ -5,7 +5,7 @@ Runs process_appointments at every :00 and :30, for ever: the "cron" of the Dock
 
 A tiny loop instead of a cron daemon inside the container: nothing else to install, and the
 logs go straight to `docker compose logs scheduler`. Aligned to :00 and :30 because the slots
-start on the hour, so a reminder or an automatic cancellation is never more than 30 minutes late.
+start on the hour, so a reminder is never more than 30 minutes late.
 One failed run is logged and the next one still happens.
 """
 

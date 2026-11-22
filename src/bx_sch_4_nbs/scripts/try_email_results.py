@@ -40,7 +40,7 @@ class DownSMTP(FakeSMTP):
 
 
 def reminder(to: str) -> bool:
-    return email.send_attendance_reminder(to, "15/10/2026 10:00", "15/10/2026 06:00", "abc")
+    return email.send_attendance_reminder(to, "15/10/2026 10:00", "abc")
 
 
 setattr(email.smtplib, "SMTP", FakeSMTP)  # noqa: B010

@@ -63,6 +63,8 @@ class Addon(str, Enum):
 class CancellationReason(str, Enum):
     CLIENT_EARLY = "Cancelled by the client, more than 48h before"
     CLIENT_LATE = "Cancelled by the client, less than 48h before"
+    # No longer given (the automatic cancellation was removed in 2026-11); kept for the
+    # appointments already cancelled this way, which reports and exports still read.
     NOT_CONFIRMED = "Attendance not confirmed in time"
     BY_STUDIO = "Cancelled by the studio"
 
