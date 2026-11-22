@@ -6,23 +6,37 @@ from bx_sch_4_nbs.database.models import User
 from bx_sch_4_nbs.database.queries import approved_list, users, verification_codes
 from bx_sch_4_nbs.database.types import VerificationPurpose
 from bx_sch_4_nbs.helpers.authentication import CurrentUser, create_access_token
-from bx_sch_4_nbs.helpers.common import mask_email
+from bx_sch_4_nbs.helpers.common import mask_email, mask_phone
 from bx_sch_4_nbs.helpers.email import (
+    send_email_change_code,
+    send_email_changed,
     send_password_changed,
     send_password_reset_code,
+    send_phone_changed,
     send_verification_code,
 )
-from bx_sch_4_nbs.helpers.security import decrypt_email, decrypt_phone, verify_password
+from bx_sch_4_nbs.helpers.security import (
+    decrypt_email,
+    decrypt_phone,
+    encrypt_email,
+    hash_email,
+    hash_phone,
+    normalize_email,
+    verify_password,
+)
 from bx_sch_4_nbs.routers.schemas.auth import (
     ActivationConfirm,
     ActivationStart,
     CheckInStart,
     CheckInVerify,
     CodeSent,
+    EmailChangeConfirm,
+    EmailChangeStart,
     Login,
     PasswordChange,
     PasswordResetConfirm,
     PasswordResetStart,
+    PhoneChange,
     ProfileUpdate,
     TokenResult,
     UserResult,
@@ -252,6 +266,15 @@ def me(user: CurrentUser) -> UserResponse:
     return UserResponse(status="OK", detail=user_result(user))
 
 
+def check_current_password(user: User, current_password: str) -> None:
+    """Changing the password, email or phone asks for the current password first."""
+    if not user.is_active or user.password_hash is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "You do not have a password yet. Create one first.")
+    # 400, not 401: a 401 means "not logged in" and would log her out in the site.
+    if not verify_password(current_password, user.password_hash):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The current password is not correct.")
+
+
 @router.post(
     "/me/password",
     description="Change your password (clients and the studio). Logs out every other device; "
@@ -264,11 +287,7 @@ def me(user: CurrentUser) -> UserResponse:
 def change_password(
     session: DatabaseSession, user: CurrentUser, data: PasswordChange, background_tasks: BackgroundTasks
 ) -> TokenResponse:
-    if not user.is_active or user.password_hash is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "You do not have a password yet. Create one first.")
-    # 400, not 401: a 401 means "not logged in" and would log her out in the site.
-    if not verify_password(data.current_password, user.password_hash):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The current password is not correct.")
+    check_current_password(user, data.current_password)
     if data.new_password == data.current_password:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "The new password must be different from the current one.")
 
@@ -276,6 +295,75 @@ def change_password(
     background_tasks.add_task(send_password_changed, decrypt_email(user.email_encrypted))
 
     return token_response(user)
+
+
+@router.post(
+    "/me/email",
+    description="Change your email, step 1: sends a code to the NEW email. Nothing changes until it is confirmed.",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Current password wrong, or the email is the same"},
+        status.HTTP_409_CONFLICT: {"description": "Email used by another account, or no password yet"},
+        status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Code requested too recently"},
+    },
+)
+def email_change_start(
+    session: DatabaseSession, user: CurrentUser, data: EmailChangeStart, background_tasks: BackgroundTasks
+) -> CodeSentResponse:
+    check_current_password(user, data.current_password)
+    new_email = normalize_email(data.new_email)
+    if hash_email(new_email) == user.email_hash:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This is already your email.")
+    if users.is_email_taken(session, new_email, by_other_than=user):
+        raise HTTPException(status.HTTP_409_CONFLICT, "This email is already registered.")
+
+    code = verification_codes.issue_code(session, user, VerificationPurpose.EMAIL_CHANGE, encrypt_email(new_email))
+    background_tasks.add_task(send_email_change_code, new_email, code)
+
+    return CodeSentResponse(status="OK", detail=CodeSent(sent_to=mask_email(new_email)))
+
+
+@router.post(
+    "/me/email/confirm",
+    description="Change your email, step 2: the code sent to the new email. The old email gets a notice.",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Invalid or expired code"},
+        status.HTTP_409_CONFLICT: {"description": "Email registered by another account in the meantime"},
+    },
+)
+def email_change_confirm(
+    session: DatabaseSession, user: CurrentUser, data: EmailChangeConfirm, background_tasks: BackgroundTasks
+) -> UserResponse:
+    pending = verification_codes.verify_code(session, user, VerificationPurpose.EMAIL_CHANGE, data.code)
+    if pending is None:
+        raise InvalidVerificationCodeError("Invalid or expired code. Please request a new one.")
+
+    old_email = decrypt_email(user.email_encrypted)
+    new_email = decrypt_email(pending)
+    users.set_email(session, user, new_email)
+    background_tasks.add_task(send_email_changed, old_email, mask_email(new_email))
+
+    return UserResponse(status="OK", detail=user_result(user))
+
+
+@router.post(
+    "/me/phone",
+    description="Change your phone number (the one you log in with). A notice goes to your email.",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Current password wrong, or the phone is the same"},
+        status.HTTP_409_CONFLICT: {"description": "Phone used by another account, or no password yet"},
+    },
+)
+def change_phone(
+    session: DatabaseSession, user: CurrentUser, data: PhoneChange, background_tasks: BackgroundTasks
+) -> UserResponse:
+    check_current_password(user, data.current_password)
+    if hash_phone(data.new_phone) == user.phone_hash:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "This is already your phone number.")
+
+    users.set_phone(session, user, data.new_phone)
+    background_tasks.add_task(send_phone_changed, decrypt_email(user.email_encrypted), mask_phone(data.new_phone))
+
+    return UserResponse(status="OK", detail=user_result(user))
 
 
 @router.patch("/me", description="Update your preferences (e.g. stop the 'agenda is open' emails)")

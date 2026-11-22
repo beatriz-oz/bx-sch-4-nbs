@@ -105,6 +105,48 @@ def send_password_changed(to: str) -> None:
     )
 
 
+def send_email_change_code(to: str, code: str) -> None:
+    send_email(
+        to=to,
+        subject="Confirm your new email - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            "To use this email in your Nails by Scooby account, enter this code on the site:\n\n"
+            f"{code}\n\n"
+            "It expires in 10 minutes.\n"
+            "If you did not ask for this, please ignore this email: nothing changes."
+        ),
+    )
+
+
+def send_email_changed(to: str, new_email_masked: str) -> None:
+    send_email(
+        to=to,
+        subject="Your email was changed - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            f"The email of your Nails by Scooby account was changed to {new_email_masked}. "
+            "From now on, our emails go there.\n\n"
+            "If it was you, there is nothing to do.\n"
+            "If it was not you, send a message to @nailsbyscooby on Instagram immediately."
+        ),
+    )
+
+
+def send_phone_changed(to: str, new_phone_masked: str) -> None:
+    send_email(
+        to=to,
+        subject="Your phone number was changed - Nails by Scooby",
+        body=(
+            "Hello!\n\n"
+            f"The phone number of your Nails by Scooby account was changed to {new_phone_masked}. "
+            "From now on, you log in with this number.\n\n"
+            "If it was you, there is nothing to do.\n"
+            "If it was not you, send a message to @nailsbyscooby on Instagram immediately."
+        ),
+    )
+
+
 def send_agenda_published(recipients: list[str], year: int, month: int) -> None:
     if not recipients:
         return
