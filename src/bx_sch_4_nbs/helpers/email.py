@@ -193,6 +193,7 @@ def send_attendance_reminder(to: str, when: str, token: str) -> bool:
         body=(
             "Hello!\n\n"
             f"This is a reminder of your appointment on {when} (Lisbon time). We are looking forward to seeing you!\n\n"
+            f"Address:\n{settings.studio_address}\n\n"
             "It would help us a lot if you let us know you are coming:\n"
             f"{url}\n\n"
             f"If you cannot come, please cancel as soon as possible. Cancellations less than "

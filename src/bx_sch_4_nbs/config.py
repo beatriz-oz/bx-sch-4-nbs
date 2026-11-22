@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = False
     email_from: str = "Nails by Scooby <no-reply@nailsbyscooby.com>"
     studio_notification_email: str = "studio@nailsbyscooby.local"
+    # Where the appointments happen: shown in the reminder email.
+    studio_address: str = "Rua de Passos Manuel, 228 – 3.º Esq.\n4000-382 Porto\nPortugal"
     cors_origins: list[str] = ["http://localhost:4200"]
     appointments_timezone: str = "Europe/Lisbon"
     # The default slots of a day; a given day can have its own (table day_slots).

@@ -14,6 +14,7 @@ to, subject, body = captured[-1]
 check("lembrete: vai para a cliente", to == "ana@teste.com")
 check("lembrete: assunto e de lembrete", "reminder" in subject.lower())
 check("lembrete: tem a data da marcacao", "15/10/2026 10:00" in body)
+check("lembrete: tem a morada do estudio", "Rua de Passos Manuel, 228" in body and "4000-382 Porto" in body)
 check("lembrete: tem o link certo", f"{settings.frontend_url}/confirm-attendance?token=abc123" in body)
 check("lembrete: ja nao ameaca cancelar", "will be cancelled" not in body and "in time" not in body)
 check("lembrete: lembra a regra das 48h", f"{settings.free_cancellation_hours} hours" in body)
