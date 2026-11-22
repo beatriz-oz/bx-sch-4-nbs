@@ -147,10 +147,6 @@ def cancel_appointment(session: Session, appointment_id: int, user_id: int, acce
     return appointment
 
 
-def auto_cancel_appointment(session: Session, appointment: Appointment, now: datetime) -> None:
-    apply_cancellation(session, appointment, CancellationReason.NOT_CONFIRMED, None, now)
-
-
 def mark_reminder_sent(session: Session, appointment: Appointment, now: datetime) -> None:
     appointment.reminder_sent_at = now
     session.add(appointment)
@@ -218,22 +214,6 @@ def appointments_needing_reminder(session: Session, now: datetime) -> list[Appoi
                 col(Appointment.attendance_confirmed_at).is_(None),
                 col(Appointment.scheduled_at) > now,
                 col(Appointment.scheduled_at) <= now + timedelta(hours=settings.reminder_hours_before),
-            )
-        ).all()
-    )
-
-    return appointments
-
-
-def appointments_to_auto_cancel(session: Session, now: datetime) -> list[Appointment]:
-    appointments = list(
-        session.exec(
-            select(Appointment).where(
-                col(Appointment.status).in_(ACTIVE_STATUSES),
-                col(Appointment.attendance_confirmed_at).is_(None),
-                col(Appointment.reminder_sent_at).is_not(None),
-                col(Appointment.scheduled_at) > now,
-                col(Appointment.scheduled_at) <= now + timedelta(hours=settings.confirmation_deadline_hours_before),
             )
         ).all()
     )

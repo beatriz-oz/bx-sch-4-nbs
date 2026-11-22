@@ -7,7 +7,7 @@ The whole system on one Linux server with Docker Compose ([compose.yaml](compose
 | `web` | Caddy: HTTPS (Let's Encrypt, automatic), `/pt-PT/` and `/en/`, `/v1` to the API, `noindex`, and the test site's password on `/mail` ([Caddyfile](Caddyfile)) |
 | `api` | FastAPI; runs the migrations on start |
 | `db` | MySQL 8.0 (data in the `mysql_data` volume) |
-| `scheduler` | reminders and automatic cancellations at every :00 and :30 |
+| `scheduler` | reminder emails at every :00 and :30 |
 | `backup` | a copy of the database every day in `backups/`, the last 14 kept |
 | `mailpit` | catches every email: nothing reaches real clients from the test site (see `/mail`) |
 

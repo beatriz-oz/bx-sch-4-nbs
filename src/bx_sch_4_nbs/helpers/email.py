@@ -183,70 +183,25 @@ def send_cancelled_appointment_notification_client(to: str, when: str, deposit_p
     )
 
 
-def send_attendance_reminder(to: str, when: str, deadline: str, token: str) -> bool:
+def send_attendance_reminder(to: str, when: str, token: str) -> bool:
+    # Only a reminder: confirming is optional and nothing is cancelled without it.
+    # The studio sees who confirmed, and knows whom to message on Instagram.
     url = f"{settings.frontend_url}/confirm-attendance?token={token}"
     email_sent = send_email(
         to=to,
-        subject="Please confirm your appointment - Nails by Scooby",
+        subject="Reminder: your appointment is tomorrow - Nails by Scooby",
         body=(
             "Hello!\n\n"
-            f"Your appointment is on {when} (Lisbon time). We are looking forward to seeing you!\n\n"
-            f"Please confirm your attendance by {deadline} (Lisbon time):\n"
+            f"This is a reminder of your appointment on {when} (Lisbon time). We are looking forward to seeing you!\n\n"
+            "It would help us a lot if you let us know you are coming:\n"
             f"{url}\n\n"
-            "If the appointment is not confirmed in time, it will be cancelled and the deposit "
-            "will not be refunded.\n\n"
+            f"If you cannot come, please cancel as soon as possible. Cancellations less than "
+            f"{settings.free_cancellation_hours} hours before do not have the deposit refunded, as stated "
+            "in the booking policies.\n\n"
             "If you do not recognize this appointment, contact @nailsbyscooby on Instagram immediately."
         ),
     )
     return email_sent
-
-
-def send_auto_cancelled_notification_client(to: str, when: str) -> bool:
-    return send_email(
-        to=to,
-        subject="Your appointment has been cancelled - Nails by Scooby",
-        body=(
-            "Hello!\n\n"
-            f"Your appointment on {when} (Lisbon time) has been cancelled because the attendance was not "
-            f"confirmed at least {settings.confirmation_deadline_hours_before} hours before.\n"
-            "As stated in the booking policies, the deposit is not refunded in this case.\n\n"
-            "If you have any questions, contact @nailsbyscooby on Instagram."
-        ),
-    )
-
-
-def send_auto_cancelled_notification_studio(
-    to: str,
-    client_instagram: str | None,
-    client_name: str,
-    when: str,
-    deposit_paid: bool,
-    email_sent_to_client: bool,
-) -> None:
-    subject = f"CANCELLED - {when}"
-    if not email_sent_to_client:
-        subject = f"CANCELLED : ACTION REQUIRED - {when}"
-
-    instagram_label = f"@{client_instagram}" if client_instagram else "no Instagram"
-    if deposit_paid:
-        deposit_line = "The deposit was paid and is not refunded."
-    else:
-        deposit_line = "The deposit had not been paid."
-
-    action_text = ""
-    if not email_sent_to_client:
-        action_text = "The email was not sent. Please, contact the client to warn the auto cancelled appointment!\n\n"
-
-    send_email(
-        to=to,
-        subject=subject,
-        body=(
-            f"{action_text}"
-            f"Appointment automatically cancelled: {instagram_label} - {client_name} on {when} (Lisbon time).\n\n"
-            "Reason: the client did not confirm attendance in time.\n"
-            f"{deposit_line}\n"
-        ),
-    )
 
 
 def send_deposit_confirmation(to: str, when: str) -> None:
@@ -256,8 +211,7 @@ def send_deposit_confirmation(to: str, when: str) -> None:
         body=(
             "Hello!\n\n"
             f"We have received your deposit, and your appointment on {when} (Lisbon time) is confirmed.\n\n"
-            f"{settings.reminder_hours_before} hours before the appointment, you will receive an email "
-            "asking you to confirm your attendance.\n"
+            f"{settings.reminder_hours_before} hours before the appointment, you will receive a reminder email.\n"
             f"If you need to cancel, please do so more than {settings.free_cancellation_hours} hours before "
             "the appointment to have your deposit refunded, as stated in the booking policies.\n\n"
             "If you did not make this payment, contact @nailsbyscooby on Instagram."
@@ -313,7 +267,7 @@ def send_changed_by_studio_notification(to: str, previous_when: str, when: str, 
             "Hello!\n\n"
             f"Nails by Scooby moved your appointment from {previous_when} to {when} (Lisbon time).\n\n"
             f"{details}\n\n"
-            "You will get a reminder to confirm your attendance before the new date.\n\n"
+            "You will get a reminder email before the new date.\n\n"
             "If this does not work for you, contact @nailsbyscooby on Instagram."
         ),
     )

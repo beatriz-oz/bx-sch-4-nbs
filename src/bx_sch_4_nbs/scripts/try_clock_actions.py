@@ -5,8 +5,8 @@ from sqlmodel import Session, select
 
 from bx_sch_4_nbs.database.helpers import engine
 from bx_sch_4_nbs.database.models import Appointment, BookedSlot, Policy, User
-from bx_sch_4_nbs.database.queries.schedule import auto_cancel_appointment, mark_reminder_sent
-from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, Service
+from bx_sch_4_nbs.database.queries.schedule import mark_reminder_sent
+from bx_sch_4_nbs.database.types import AppointmentStatus, Service
 from bx_sch_4_nbs.helpers.common import utc_now
 
 
@@ -51,12 +51,7 @@ with engine.connect() as connection:
     session.refresh(appointment)
     check("lembrete: reminder_sent_at gravado", appointment.reminder_sent_at == now)
 
-    auto_cancel_appointment(session, appointment, now)
-    session.refresh(appointment)
-    check("cancelamento: status CANCELLED", appointment.status == AppointmentStatus.CANCELLED)
-    check("cancelamento: motivo NOT_CONFIRMED", appointment.cancellation_reason == CancellationReason.NOT_CONFIRMED)
-    check("cancelamento: cancelled_at gravado", appointment.cancelled_at == now)
-    check("cancelamento: cancelled_by vazio (foi o sistema)", appointment.cancelled_by is None)
-    check("cancelamento: horario liberado", session.get(BookedSlot, appointment.scheduled_at) is None)
+    check("lembrete: a marcacao continua ativa", appointment.status == AppointmentStatus.SCHEDULED)
+    check("lembrete: o horario continua ocupado", session.get(BookedSlot, appointment.scheduled_at) is not None)
 
     transaction.rollback()
