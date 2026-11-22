@@ -70,6 +70,27 @@ def update_unverified_user(session: Session, user: User, *, name: str, last_name
     _flush_or_raise_duplicate(session)
 
 
+def set_email(session: Session, user: User, email: str) -> None:
+    """A confirmed new email (the code reached it), so it counts as verified."""
+    user.email_encrypted = encrypt_email(email)
+    user.email_hash = hash_email(email)
+    user.email_verified = True
+    session.add(user)
+    _flush_or_raise_duplicate(session)
+
+
+def set_phone(session: Session, user: User, phone: str) -> None:
+    user.phone_encrypted = encrypt_phone(phone)
+    user.phone_hash = hash_phone(phone)
+    session.add(user)
+    _flush_or_raise_duplicate(session)
+
+
+def is_email_taken(session: Session, email: str, by_other_than: User) -> bool:
+    other = session.exec(select(User).where(User.email_hash == hash_email(email))).first()
+    return other is not None and other.id != by_other_than.id
+
+
 def get_user_by_phone(session: Session, phone: str) -> User | None:
     return session.exec(select(User).where(User.phone_hash == hash_phone(phone))).first()
 

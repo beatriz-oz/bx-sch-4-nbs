@@ -26,7 +26,9 @@ def _get_code(session: Session, user: User, purpose: VerificationPurpose) -> Ver
     ).first()
 
 
-def issue_code(session: Session, user: User, purpose: VerificationPurpose) -> str:
+def issue_code(
+    session: Session, user: User, purpose: VerificationPurpose, pending_value_encrypted: str | None = None
+) -> str:
     if user.id is None:
         raise ValueError("User must be saved before issuing a verification code.")
 
@@ -47,6 +49,7 @@ def issue_code(session: Session, user: User, purpose: VerificationPurpose) -> st
         entry = VerificationCode(user_id=user.id, purpose=purpose, code_hash="", sent_at=now, expires_at=now)
 
     entry.code_hash = hash_verification_code(code)
+    entry.pending_value_encrypted = pending_value_encrypted
     entry.attempts = 0
     entry.sent_at = now
     entry.expires_at = now + CODE_TTL
@@ -56,7 +59,8 @@ def issue_code(session: Session, user: User, purpose: VerificationPurpose) -> st
     return code
 
 
-def verify_code(session: Session, user: User, purpose: VerificationPurpose, code: str) -> None:
+def verify_code(session: Session, user: User, purpose: VerificationPurpose, code: str) -> str | None:
+    """Checks and uses up the code. Returns what was waiting with it (the new email of an email change)."""
     entry = _get_code(session, user, purpose)
 
     if entry is None or entry.expires_at < utc_now() or entry.attempts >= MAX_ATTEMPTS:
@@ -70,4 +74,6 @@ def verify_code(session: Session, user: User, purpose: VerificationPurpose, code
         session.commit()
         raise InvalidVerificationCodeError("Invalid or expired code. Please request a new one.")
 
+    pending_value_encrypted = entry.pending_value_encrypted
     session.delete(entry)
+    return pending_value_encrypted

@@ -186,6 +186,8 @@ class VerificationCode(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.id", nullable=False, ondelete="CASCADE")
     purpose: VerificationPurpose = Field(nullable=False)
     code_hash: str = Field(max_length=64, nullable=False)
+    # Email change: the new email (encrypted) waits here until its code is confirmed.
+    pending_value_encrypted: str | None = Field(default=None, max_length=512, nullable=True)
     attempts: int = Field(default=0, nullable=False)
     sent_at: datetime = Field(nullable=False)
     expires_at: datetime = Field(nullable=False)

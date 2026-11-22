@@ -30,6 +30,11 @@ def mask_email(email: str) -> str:
     return f"{local[0]}***@{domain}"
 
 
+def mask_phone(phone: str) -> str:
+    """+351912345678 -> +351*****678: enough to recognise it in an email."""
+    return f"{phone[:4]}{'*' * max(len(phone) - 7, 0)}{phone[-3:]}"
+
+
 def to_studio_time(value: datetime) -> datetime:
     if value.tzinfo is None:
         value = value.replace(tzinfo=UTC)

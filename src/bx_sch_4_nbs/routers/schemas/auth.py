@@ -66,6 +66,22 @@ class PasswordChange(BaseModel):
     new_password: Password
 
 
+class EmailChangeStart(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    current_password: str = Field(max_length=128, json_schema_extra={"format": "password"})
+    new_email: EmailStr
+
+
+class EmailChangeConfirm(BaseModel):
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class PhoneChange(BaseModel):
+    current_password: str = Field(max_length=128, json_schema_extra={"format": "password"})
+    new_phone: PhoneNumber
+
+
 class PasswordResetStart(BaseModel):
     phone: PhoneNumber
 
