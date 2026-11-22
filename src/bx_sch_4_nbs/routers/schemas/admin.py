@@ -223,6 +223,8 @@ class StudioAppointmentDetails(BaseModel):
 class StudioAppointment(StudioAppointmentDetails):
     user_id: int | None = None
     new_client: NewClient | None = None
+    # The client already paid the deposit (e.g. by MB Way while booking on Instagram).
+    deposit_paid: bool = False
 
     @model_validator(mode="after")
     def validate_client(self) -> Self:

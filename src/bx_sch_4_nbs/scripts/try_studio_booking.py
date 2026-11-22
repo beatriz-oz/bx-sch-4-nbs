@@ -280,5 +280,65 @@ overdue = {row["service"]: row["deposit_overdue"] for row in rows if row["notes"
 check("OTHER antigo sem sinal nao aparece como atrasado", overdue.get("Other") is False, overdue)
 check("remocao antiga sem sinal continua atrasada", overdue.get("Removal") is True, overdue)
 
+# --- marcada com o sinal ja pago ---
+sent.clear()
+paid_day = now + timedelta(days=14)
+response = book(
+    {
+        "scheduled_at": lisbon(paid_day.replace(minute=25, second=0)),
+        "service": "Removal",
+        "estimated_price": "15",
+        "user_id": ANA,
+        "deposit_paid": True,
+    }
+)
+detail = detail_of(response)
+check("com sinal pago: 201", response.status_code == 201, response.text[:300])
+check(
+    "com sinal pago: nasce Confirmed e com o sinal registado",
+    detail.get("status") == "Confirmed" and detail.get("deposit_paid") is True,
+    detail,
+)
+check(
+    "com sinal pago: o email diz que o sinal foi recebido",
+    bool(sent) and len(sent[-1]) == 5 and sent[-1][4] is True,
+    sent[-1:],
+)
+pending = client.get("/v1/admin/payments", headers=ADMIN).json()["detail"]["pending_deposits"]
+check("com sinal pago: nao aparece nos sinais pendentes", detail.get("id") not in [row["id"] for row in pending])
+
+response = book(
+    {
+        "scheduled_at": lisbon(paid_day.replace(minute=35, second=0)),
+        "service": "Other",
+        "estimated_price": "5",
+        "notes": "Repair",
+        "user_id": ANA,
+        "deposit_paid": True,
+    }
+)
+check("sinal pago num servico sem sinal (Other): 422", response.status_code == 422, response.status_code)
+
+sent.clear()
+response = book(
+    {
+        "scheduled_at": lisbon(paid_day.replace(minute=45, second=0)),
+        "service": "Removal",
+        "estimated_price": "15",
+        "user_id": ANA,
+    }
+)
+detail = detail_of(response)
+check(
+    "sem a caixa marcada: continua Scheduled, sinal por pagar",
+    detail.get("status") == "Scheduled" and detail.get("deposit_paid") is False,
+    detail,
+)
+check(
+    "sem a caixa marcada: o email avisa do sinal",
+    bool(sent) and sent[-1][3] is True and sent[-1][4] is False,
+    sent[-1:],
+)
+
 transaction.rollback()
 connection.close()
