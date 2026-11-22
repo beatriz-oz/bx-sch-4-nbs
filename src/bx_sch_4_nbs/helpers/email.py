@@ -58,6 +58,10 @@ def send_emails(messages: list[EmailMessage]) -> set[str]:
     return failed_emails
 
 
+def studio_address_block() -> str:
+    return f"Address:\n{settings.studio_address}\n\n"
+
+
 def send_email(to: str, subject: str, body: str) -> bool:
     failed_emails = send_emails([_build_message(to, subject, body)])
 
@@ -235,7 +239,7 @@ def send_attendance_reminder(to: str, when: str, token: str) -> bool:
         body=(
             "Hello!\n\n"
             f"This is a reminder of your appointment on {when} (Lisbon time). We are looking forward to seeing you!\n\n"
-            f"Address:\n{settings.studio_address}\n\n"
+            f"{studio_address_block()}"
             "It would help us a lot if you let us know you are coming:\n"
             f"{url}\n\n"
             f"If you cannot come, please cancel as soon as possible. Cancellations less than "
@@ -254,6 +258,7 @@ def send_deposit_confirmation(to: str, when: str) -> None:
         body=(
             "Hello!\n\n"
             f"We have received your deposit, and your appointment on {when} (Lisbon time) is confirmed.\n\n"
+            f"{studio_address_block()}"
             f"{settings.reminder_hours_before} hours before the appointment, you will receive a reminder email.\n"
             f"If you need to cancel, please do so more than {settings.free_cancellation_hours} hours before "
             "the appointment to have your deposit refunded, as stated in the booking policies.\n\n"
@@ -294,6 +299,7 @@ def send_booked_by_studio_notification(to: str, when: str, details: str, deposit
             "Hello!\n\n"
             f"Nails by Scooby booked an appointment for you on {when} (Lisbon time).\n\n"
             f"{details}\n\n"
+            f"{studio_address_block()}"
             f"{deposit_line}"
             "Please read our booking policies, they apply to this appointment:\n"
             f"{settings.frontend_url}/policies\n\n"
@@ -310,6 +316,7 @@ def send_changed_by_studio_notification(to: str, previous_when: str, when: str, 
             "Hello!\n\n"
             f"Nails by Scooby moved your appointment from {previous_when} to {when} (Lisbon time).\n\n"
             f"{details}\n\n"
+            f"{studio_address_block()}"
             "You will get a reminder email before the new date.\n\n"
             "If this does not work for you, contact @nailsbyscooby on Instagram."
         ),
