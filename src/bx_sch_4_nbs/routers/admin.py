@@ -559,6 +559,8 @@ def book_appointment(
 
     if client.id is None:
         raise RuntimeError("Client without id.")
+    if data.deposit_paid and not is_deposit_required(data.service):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "This service has no deposit.")
 
     now = utc_now()
     appointment = admin.book_appointment_by_studio(
@@ -576,6 +578,7 @@ def book_appointment(
         duration_minutes=data.duration_minutes,
         policy_id=current_policy.id,
         now=now,
+        deposit_paid=data.deposit_paid,
     )
 
     # Squeeze-ins and past bookings get no email: the manicure has just talked to the client.
@@ -586,6 +589,7 @@ def book_appointment(
             to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
             booking_details(appointment),
             is_deposit_required(appointment.service),
+            appointment.deposit_paid_at is not None,
         )
 
     return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, client, now))
