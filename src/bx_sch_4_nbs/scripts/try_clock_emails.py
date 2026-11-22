@@ -22,3 +22,12 @@ check(
     "lembrete: deixou de haver emails de auto-cancelamento",
     not hasattr(email, "send_auto_cancelled_notification_client"),
 )
+
+# The address is in every email that gives the client a date.
+ADDRESS = "Rua de Passos Manuel, 228"
+email.send_deposit_confirmation("ana@teste.com", "15/10/2026 10:00")
+check("sinal recebido (confirmacao): tem a morada", ADDRESS in captured[-1][2])
+email.send_booked_by_studio_notification("ana@teste.com", "15/10/2026 10:00", "Removal", deposit_required=True)
+check("marcada pelo estudio: tem a morada", ADDRESS in captured[-1][2])
+email.send_changed_by_studio_notification("ana@teste.com", "14/10/2026 10:00", "15/10/2026 10:00", "Removal")
+check("mudada pelo estudio: tem a morada", ADDRESS in captured[-1][2])
