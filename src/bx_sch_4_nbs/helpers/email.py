@@ -286,12 +286,15 @@ def send_cancelled_by_studio_notification(to: str, when: str, deposit_paid: bool
     )
 
 
-def send_booked_by_studio_notification(to: str, when: str, details: str, deposit_required: bool) -> None:
-    deposit_line = (
-        "To secure your appointment, @nailsbyscooby will contact you on Instagram about the deposit.\n\n"
-        if deposit_required
-        else ""
-    )
+def send_booked_by_studio_notification(
+    to: str, when: str, details: str, deposit_required: bool, deposit_paid: bool = False
+) -> None:
+    if deposit_paid:
+        deposit_line = "We have received your deposit: your appointment is confirmed.\n\n"
+    elif deposit_required:
+        deposit_line = "To secure your appointment, @nailsbyscooby will contact you on Instagram about the deposit.\n\n"
+    else:
+        deposit_line = ""
     send_email(
         to=to,
         subject=f"Your appointment on {when} - Nails by Scooby",

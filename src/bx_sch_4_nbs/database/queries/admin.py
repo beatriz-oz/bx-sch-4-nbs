@@ -209,11 +209,12 @@ def book_appointment_by_studio(
     now: datetime,
     trade_item: TradeItem | None = None,
     duration_minutes: int | None = None,
+    deposit_paid: bool = False,
 ) -> Appointment:
     # A squeeze-in was just agreed with the client, so attendance is already confirmed.
     is_squeeze_in = now < scheduled_at and is_within_reminder_window(scheduled_at, now)
 
-    return schedule.create_appointment(
+    appointment = schedule.create_appointment(
         session,
         user_id=user_id,
         scheduled_at=scheduled_at,
@@ -230,6 +231,15 @@ def book_appointment_by_studio(
         trade_item=trade_item,
         duration_minutes=duration_minutes,
     )
+
+    # Booked with the deposit already paid: the same state as confirming it later (confirm_deposit).
+    if deposit_paid:
+        appointment.status = AppointmentStatus.CONFIRMED
+        appointment.deposit_paid_at = now
+        session.add(appointment)
+        session.flush()
+
+    return appointment
 
 
 def change_appointment_by_studio(
