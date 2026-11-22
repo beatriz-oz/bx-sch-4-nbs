@@ -2,26 +2,18 @@
 # The same rules as scripts/serve-locales.mjs in the front end (the local "npm run preview").
 #
 # {$SITE_ADDRESS} comes from deploy/.env:
-#   - a domain (nailsbyscooby-teste.duckdns.org): Caddy gets and renews a free Let's Encrypt certificate
+#   - a domain (nailsbyscooby.pt): Caddy gets and renews a free Let's Encrypt certificate
 #   - :80 to try it on a computer, without HTTPS (open http://localhost:<HTTP_PORT>)
+# {$DEPLOY_MODE} (production or bench) adds the rules of caddy/<mode>.caddy.
 
 {$SITE_ADDRESS} {
 	encode zstd gzip
 
-	# Test site ("bench"): open to everyone, but out of search engines.
-	# Strangers still cannot book (Instagram pre-approval) nor reach any account (passwords).
-	header X-Robots-Tag "noindex, nofollow"
+	import /etc/caddy/modes/{$DEPLOY_MODE}.caddy
 
 	# The API.
 	handle /v1/* {
 		reverse_proxy api:8000
-	}
-
-	# The emails caught by Mailpit hold login and reset codes: only this page stays behind
-	# the test site's password (deploy/bench-auth.caddy).
-	handle /mail* {
-		import /etc/caddy/bench-auth.caddy
-		reverse_proxy mailpit:8025
 	}
 
 	# Each language is its own copy of the site; unknown paths get its index.html (Angular routes them).

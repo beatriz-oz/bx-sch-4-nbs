@@ -1,6 +1,6 @@
 # The whole system on one server:   docker compose up -d --build   (from this folder)
 # Needs the two repositories side by side:  ./bx-sch-4-nbs  and  ./bx-sch-4-nbs-front
-# and deploy/.env + deploy/bench-auth.caddy (see README.md: new-secrets.sh creates both).
+# and deploy/.env (see README.md: new-secrets.sh creates it).
 name: nailsbyscooby
 
 services:
@@ -12,9 +12,10 @@ services:
       - "443:443"
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS}
+      DEPLOY_MODE: ${DEPLOY_MODE:-production}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./bench-auth.caddy:/etc/caddy/bench-auth.caddy:ro
+      - ./caddy:/etc/caddy/modes:ro
       # The HTTPS certificates survive restarts (Let's Encrypt limits how often they are issued).
       - caddy_data:/data
       - caddy_config:/config
@@ -42,7 +43,7 @@ services:
       db:
         condition: service_healthy
 
-  # Reminders and automatic cancellations, at every :00 and :30.
+  # Reminder emails, at every :00 and :30.
   scheduler:
     build: ..
     restart: unless-stopped
@@ -83,10 +84,10 @@ services:
       db:
         condition: service_healthy
 
-  # Test site only: catches every email (see them at /mail).
-  # For real emails, set SMTP_HOST etc. in .env (Brevo) and stop this one.
+  # Test site only (COMPOSE_PROFILES=bench in .env): catches every email (see them at /mail).
   mailpit:
     image: axllent/mailpit
+    profiles: ["bench"]
     restart: unless-stopped
     environment:
       MP_WEBROOT: /mail
