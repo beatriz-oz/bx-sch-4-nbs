@@ -1,7 +1,7 @@
 import calendar
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 
@@ -22,8 +22,8 @@ from bx_sch_4_nbs.database.queries import (
 )
 from bx_sch_4_nbs.database.queries import approved_list as queries
 from bx_sch_4_nbs.database.queries.admin import cancel_appointment_by_studio
-from bx_sch_4_nbs.database.queries.schedule import list_appointments
-from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize, Service
+from bx_sch_4_nbs.database.queries.schedule import is_deposit_required, list_appointments
+from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize
 from bx_sch_4_nbs.helpers import export
 from bx_sch_4_nbs.helpers.authentication import CurrentAdmin, get_current_admin
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
@@ -53,13 +53,16 @@ from bx_sch_4_nbs.routers.schemas.admin import (
     MonthReportResult,
     NewPolicy,
     NewPreApprovedInstagram,
+    PeriodSummary,
     PolicyResult,
     PreApprovedInstagramResult,
     ServiceReport,
     StudioAppointment,
     StudioAppointmentDetails,
     StudioCancellation,
+    TradeReport,
     YearReport,
+    YearTotals,
 )
 from bx_sch_4_nbs.routers.schemas.appointments import AvailabilityPreview, AvailableDay
 from bx_sch_4_nbs.routers.schemas.prices import (
@@ -569,6 +572,8 @@ def book_appointment(
         has_other_professional_nails=data.has_other_professional_nails,
         estimated_price=data.estimated_price,
         notes=data.notes,
+        trade_item=data.trade_item,
+        duration_minutes=data.duration_minutes,
         policy_id=current_policy.id,
         now=now,
     )
@@ -580,7 +585,7 @@ def book_appointment(
             decrypt_email(client.email_encrypted),
             to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
             booking_details(appointment),
-            appointment.service != Service.OTHER,
+            is_deposit_required(appointment.service),
         )
 
     return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, client, now))
@@ -680,8 +685,10 @@ def client_profile(session: DatabaseSession, user: User) -> ClientProfile:
     description="Month by month in a year (Lisbon time): completed appointments, hours worked and income",
 )
 def get_year_report(session: DatabaseSession, year: Annotated[int, Query(ge=2026, le=2100)]) -> YearReportResponse:
+    month_reports = reports.year_report(session, year)
     months = [
         MonthReportResult(
+            **period_summary(report),
             month=report.month,
             completed=report.completed,
             worked_minutes=report.worked_minutes,
@@ -706,12 +713,42 @@ def get_year_report(session: DatabaseSession, year: Annotated[int, Query(ge=2026
                 for category, amount in report.expenses_by_category.items()
             ],
             profit=report.profit,
+            trades=report.trades,
+            trade_minutes=report.trade_minutes,
+            trades_by_item=[
+                TradeReport(trade_item=item, completed=totals.completed, worked_minutes=totals.worked_minutes)
+                for item, totals in report.trades_by_item.items()
+            ],
         )
-        for report in reports.year_report(session, year)
+        for report in month_reports
     ]
-    return YearReportResponse(
-        status="OK", detail=YearReport(year=year, deposit_amount=settings.deposit_amount, months=months)
+    year_total = reports.whole_year(month_reports)
+    totals = YearTotals(
+        **period_summary(year_total),
+        completed=year_total.completed,
+        worked_minutes=year_total.worked_minutes,
+        total_revenue=year_total.total_revenue,
+        expenses=year_total.expenses,
+        profit=year_total.profit,
+        trades=year_total.trades,
     )
+    return YearReportResponse(
+        status="OK",
+        detail=YearReport(year=year, deposit_amount=settings.deposit_amount, months=months, totals=totals),
+    )
+
+
+def period_summary(report: reports.PeriodReport) -> dict[str, Any]:
+    """The fields shared by a month and the year (PeriodSummary), checked by Pydantic once here."""
+    return PeriodSummary(
+        clients=report.clients,
+        days_worked=report.days_worked,
+        revenue_per_hour=report.revenue_per_hour,
+        average_per_client=report.average_per_client,
+        average_per_day=report.average_per_day,
+        cost_per_client=report.cost_per_client,
+        profit_per_client=report.profit_per_client,
+    ).model_dump()
 
 
 @router.get(
@@ -832,6 +869,8 @@ def change_appointment(
         has_other_professional_nails=data.has_other_professional_nails,
         estimated_price=data.estimated_price,
         notes=data.notes,
+        trade_item=data.trade_item,
+        duration_minutes=data.duration_minutes,
         now=now,
     )
     appointment = changed.appointment

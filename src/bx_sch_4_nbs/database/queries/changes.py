@@ -19,7 +19,7 @@ from bx_sch_4_nbs.database.exceptions import (
 from bx_sch_4_nbs.database.models import Appointment, BookedSlot
 from bx_sch_4_nbs.database.queries import availability, day_slots, prices
 from bx_sch_4_nbs.database.queries.schedule import ACTIVE_STATUSES, is_change_window_open
-from bx_sch_4_nbs.database.types import NailArtLevel, NailSize, Service
+from bx_sch_4_nbs.database.types import STUDIO_ONLY_SERVICES, NailArtLevel, NailSize, Service
 from bx_sch_4_nbs.helpers.common import to_studio_time
 
 
@@ -89,7 +89,7 @@ def change_appointment_by_client(
         raise ResourceDoesNotExistError(f"Appointment {appointment_id} does not exist.")
     if appointment.status not in ACTIVE_STATUSES:
         raise AppointmentNotActiveError("Only scheduled or confirmed appointments can be changed.")
-    if appointment.service == Service.OTHER:
+    if appointment.service in STUDIO_ONLY_SERVICES:
         raise AppointmentChangeNotAllowedError(
             "This appointment was arranged directly with the studio. To change it, contact @nailsbyscooby on Instagram."
         )

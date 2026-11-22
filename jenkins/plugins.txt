@@ -1,0 +1,11 @@
+# Pipelines (Jenkinsfile) and their stage view
+workflow-aggregator
+pipeline-stage-view
+# Git checkout from GitHub
+git
+# Configuration as Code (casc.yaml) and the jobs it creates
+configuration-as-code
+job-dsl
+# Nicer logs and an empty workspace when asked
+timestamper
+ws-cleanup

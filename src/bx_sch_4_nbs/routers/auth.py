@@ -7,7 +7,11 @@ from bx_sch_4_nbs.database.queries import approved_list, users, verification_cod
 from bx_sch_4_nbs.database.types import VerificationPurpose
 from bx_sch_4_nbs.helpers.authentication import CurrentUser, create_access_token
 from bx_sch_4_nbs.helpers.common import mask_email
-from bx_sch_4_nbs.helpers.email import send_verification_code
+from bx_sch_4_nbs.helpers.email import (
+    send_password_changed,
+    send_password_reset_code,
+    send_verification_code,
+)
 from bx_sch_4_nbs.helpers.security import decrypt_email, decrypt_phone, verify_password
 from bx_sch_4_nbs.routers.schemas.auth import (
     ActivationConfirm,
@@ -16,12 +20,16 @@ from bx_sch_4_nbs.routers.schemas.auth import (
     CheckInVerify,
     CodeSent,
     Login,
+    PasswordChange,
+    PasswordResetConfirm,
+    PasswordResetStart,
     ProfileUpdate,
     TokenResult,
     UserResult,
 )
 from bx_sch_4_nbs.routers.schemas.responses import (
     CodeSentResponse,
+    MessageResponse,
     TokenResponse,
     UserResponse,
 )
@@ -175,6 +183,47 @@ def login(session: DatabaseSession, data: Login) -> TokenResponse:
         return token_response(user)
 
 
+# The same answer whether the phone exists or not, so this form cannot be used to find out who is a client.
+RESET_CODE_SENT = "If this phone belongs to an account with a password, we sent a code to its email."
+
+
+@router.post(
+    "/password/forgot",
+    description="Forgot the password: sends a code to the account's email (clients and the studio)",
+    responses={status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Code requested too recently"}},
+)
+def password_reset_start(
+    session: DatabaseSession, data: PasswordResetStart, background_tasks: BackgroundTasks
+) -> MessageResponse:
+    user = users.get_user_by_phone(session, data.phone)
+
+    # Without a password there is nothing to reset: that client creates one in the activation instead.
+    if user is not None and user.is_active:
+        code = verification_codes.issue_code(session, user, VerificationPurpose.PASSWORD_RESET)
+        background_tasks.add_task(send_password_reset_code, decrypt_email(user.email_encrypted), code)
+
+    return MessageResponse(status="OK", detail=RESET_CODE_SENT)
+
+
+@router.post(
+    "/password/reset",
+    description="Confirm the email code and choose a new password. Logs out every other device.",
+    responses={status.HTTP_400_BAD_REQUEST: {"description": "Invalid or expired code"}},
+)
+def password_reset_confirm(
+    session: DatabaseSession, data: PasswordResetConfirm, background_tasks: BackgroundTasks
+) -> TokenResponse:
+    user = users.get_user_by_phone(session, data.phone)
+    if user is None or not user.is_active:
+        raise InvalidVerificationCodeError("Invalid or expired code. Please request a new one.")
+
+    verification_codes.verify_code(session, user, VerificationPurpose.PASSWORD_RESET, data.code)
+    users.set_password(session, user, data.password)
+    background_tasks.add_task(send_password_changed, decrypt_email(user.email_encrypted))
+
+    return token_response(user)
+
+
 def user_result(user: User) -> UserResult:
     if user.id is None:
         raise HTTPException(
@@ -201,6 +250,32 @@ def user_result(user: User) -> UserResult:
 @router.get("/me", description="Data of the logged-in user")
 def me(user: CurrentUser) -> UserResponse:
     return UserResponse(status="OK", detail=user_result(user))
+
+
+@router.post(
+    "/me/password",
+    description="Change your password (clients and the studio). Logs out every other device; "
+    "the answer has a new token for this one.",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "Current password wrong, or the new one is the same"},
+        status.HTTP_409_CONFLICT: {"description": "No password yet (create it in the activation)"},
+    },
+)
+def change_password(
+    session: DatabaseSession, user: CurrentUser, data: PasswordChange, background_tasks: BackgroundTasks
+) -> TokenResponse:
+    if not user.is_active or user.password_hash is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "You do not have a password yet. Create one first.")
+    # 400, not 401: a 401 means "not logged in" and would log her out in the site.
+    if not verify_password(data.current_password, user.password_hash):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The current password is not correct.")
+    if data.new_password == data.current_password:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "The new password must be different from the current one.")
+
+    users.set_password(session, user, data.new_password)
+    background_tasks.add_task(send_password_changed, decrypt_email(user.email_encrypted))
+
+    return token_response(user)
 
 
 @router.patch("/me", description="Update your preferences (e.g. stop the 'agenda is open' emails)")

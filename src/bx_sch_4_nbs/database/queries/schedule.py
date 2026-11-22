@@ -19,11 +19,13 @@ from bx_sch_4_nbs.database.models import (
 )
 from bx_sch_4_nbs.database.queries import day_slots
 from bx_sch_4_nbs.database.types import (
+    STUDIO_ONLY_SERVICES,
     AppointmentStatus,
     CancellationReason,
     NailArtLevel,
     NailSize,
     Service,
+    TradeItem,
 )
 from bx_sch_4_nbs.helpers.common import to_utc, utc_now
 
@@ -105,6 +107,11 @@ def is_change_window_open(scheduled_at: datetime, now: datetime) -> bool:
     return scheduled_at - now > timedelta(hours=settings.free_cancellation_hours)
 
 
+def is_deposit_required(service: Service) -> bool:
+    """Every service needs the deposit except the ones the studio books at her own price."""
+    return service not in STUDIO_ONLY_SERVICES
+
+
 def is_refund_due(appointment: Appointment) -> bool:
     """The deposit was paid, the cancellation gives it back, and the studio has not done it yet."""
     return (
@@ -140,10 +147,6 @@ def cancel_appointment(session: Session, appointment_id: int, user_id: int, acce
     return appointment
 
 
-def auto_cancel_appointment(session: Session, appointment: Appointment, now: datetime) -> None:
-    apply_cancellation(session, appointment, CancellationReason.NOT_CONFIRMED, None, now)
-
-
 def mark_reminder_sent(session: Session, appointment: Appointment, now: datetime) -> None:
     appointment.reminder_sent_at = now
     session.add(appointment)
@@ -165,6 +168,8 @@ def create_appointment(
     policies_accepted_at: datetime | None,
     notes: str | None = None,
     attendance_confirmed_at: datetime | None = None,
+    trade_item: TradeItem | None = None,
+    duration_minutes: int | None = None,
 ) -> Appointment:
     appointment = Appointment(
         user_id=user_id,
@@ -180,6 +185,8 @@ def create_appointment(
         policies_accepted_at=policies_accepted_at,
         notes=notes,
         attendance_confirmed_at=attendance_confirmed_at,
+        trade_item=trade_item,
+        duration_minutes=duration_minutes,
     )
     session.add(appointment)
     session.flush()
@@ -207,22 +214,6 @@ def appointments_needing_reminder(session: Session, now: datetime) -> list[Appoi
                 col(Appointment.attendance_confirmed_at).is_(None),
                 col(Appointment.scheduled_at) > now,
                 col(Appointment.scheduled_at) <= now + timedelta(hours=settings.reminder_hours_before),
-            )
-        ).all()
-    )
-
-    return appointments
-
-
-def appointments_to_auto_cancel(session: Session, now: datetime) -> list[Appointment]:
-    appointments = list(
-        session.exec(
-            select(Appointment).where(
-                col(Appointment.status).in_(ACTIVE_STATUSES),
-                col(Appointment.attendance_confirmed_at).is_(None),
-                col(Appointment.reminder_sent_at).is_not(None),
-                col(Appointment.scheduled_at) > now,
-                col(Appointment.scheduled_at) <= now + timedelta(hours=settings.confirmation_deadline_hours_before),
             )
         ).all()
     )
@@ -283,7 +274,7 @@ def is_deposit_overdue(appointment: Appointment, now: datetime) -> bool:
     scheduled = AppointmentStatus.SCHEDULED
     limit = now - timedelta(days=settings.deposit_overdue_days)
 
-    if not appointment.created_at or appointment.service == Service.OTHER:
+    if not appointment.created_at or appointment.service in STUDIO_ONLY_SERVICES:
         return False
 
     return appointment.status == scheduled and appointment.created_at < limit

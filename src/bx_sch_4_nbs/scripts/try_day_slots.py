@@ -5,7 +5,7 @@ from sqlmodel import Session, select
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.helpers import engine, get_session
-from bx_sch_4_nbs.database.models import Appointment, BookedSlot, Policy, User
+from bx_sch_4_nbs.database.models import Appointment, BookedSlot, Policy, ScheduleException, User
 from bx_sch_4_nbs.database.queries import availability, day_slots
 from bx_sch_4_nbs.database.types import AppointmentStatus, NailSize, Service, UserRole
 from bx_sch_4_nbs.helpers.authentication import create_access_token
@@ -40,10 +40,17 @@ assert admin is not None and policy is not None and policy.id is not None
 ADMIN = {"Authorization": f"Bearer {create_access_token(admin)}"}
 
 # Two open days, about two months from now: one with its own slots, one with the default.
+# Days the studio already changed (exceptions, own slots or bookings) are skipped: the test needs untouched days.
 today = to_studio_time(utc_now()).date()
 start = (today.replace(day=1) + timedelta(days=62)).replace(day=1)
+end = start + timedelta(days=27)
+changed = {e.day for e in session.exec(select(ScheduleException)).all()}
+changed |= set(day_slots.slots_by_day(session, start, end))
+changed |= {to_studio_time(s.slot_at).date() for s in session.exec(select(BookedSlot)).all()}
 open_days = [
-    start + timedelta(days=n) for n in range(28) if (start + timedelta(days=n)).weekday() in settings.open_weekdays
+    day
+    for day in (start + timedelta(days=n) for n in range(28))
+    if day.weekday() in settings.open_weekdays and day not in changed
 ]
 custom_day, default_day = open_days[0], open_days[1]
 CUSTOM = [time(10, 0), time(14, 0), time(16, 0)]

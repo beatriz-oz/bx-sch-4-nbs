@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = False
     email_from: str = "Nails by Scooby <no-reply@nailsbyscooby.com>"
     studio_notification_email: str = "studio@nailsbyscooby.local"
+    # Where the appointments happen: shown in the reminder email.
+    studio_address: str = "Rua de Passos Manuel, 228 – 3.º Esq.\n4000-382 Porto\nPortugal"
     cors_origins: list[str] = ["http://localhost:4200"]
     appointments_timezone: str = "Europe/Lisbon"
     # The default slots of a day; a given day can have its own (table day_slots).
@@ -29,7 +31,6 @@ class Settings(BaseSettings):
     maintenance_max_days: int = 35
     free_cancellation_hours: int = 48
     reminder_hours_before: int = 24
-    confirmation_deadline_hours_before: int = 4
     frontend_url: str = "http://localhost:4200"
     min_booking_advance_hours: int = 24
     deposit_overdue_days: int = 2
@@ -40,6 +41,9 @@ class Settings(BaseSettings):
         Service.MAINTENANCE: 150,
         Service.REMOVAL: 60,
         Service.OTHER: 60,
+        Service.PRESS_ON: 180,
+        # Only a fallback: a trade always has the duration she set when booking it.
+        Service.TRADING: 180,
     }
     # The deposit (also written in the policies). Counted as income when the studio keeps it.
     deposit_amount: Decimal = Decimal("10.00")

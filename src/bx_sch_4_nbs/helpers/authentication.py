@@ -48,15 +48,21 @@ def get_current_user(
             algorithms=[settings.jwt_algorithm],
         )
         user_id = int(payload["sub"])
+        issued_at = int(payload["iat"])
 
         if payload["purpose"] != "access":
             raise InvalidTokenError
 
-    except (InvalidTokenError, KeyError, ValueError) as error:
+    except (InvalidTokenError, KeyError, ValueError, TypeError) as error:
         raise CREDENTIALS_EXCEPTION from error
 
     user = session.get(User, user_id)
     if user is None:
+        raise CREDENTIALS_EXCEPTION
+
+    # A new password logs out every session opened before it (e.g. a stolen phone, a shared computer).
+    # Both sides are whole seconds, so the token issued together with the new password still works.
+    if user.password_changed_at is not None and issued_at < user.password_changed_at.replace(tzinfo=UTC).timestamp():
         raise CREDENTIALS_EXCEPTION
 
     return user

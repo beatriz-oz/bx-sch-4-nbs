@@ -10,7 +10,7 @@ import bx_sch_4_nbs.routers.admin as admin_router
 from bx_sch_4_nbs.database.helpers import engine, get_session
 from bx_sch_4_nbs.database.models import Appointment, Policy, User
 from bx_sch_4_nbs.database.queries.prices import calculate_price
-from bx_sch_4_nbs.database.queries.schedule import appointments_needing_reminder, appointments_to_auto_cancel
+from bx_sch_4_nbs.database.queries.schedule import appointments_needing_reminder
 from bx_sch_4_nbs.database.types import AppointmentStatus, NailArtLevel, NailSize, Service, UserRole
 from bx_sch_4_nbs.helpers.authentication import create_access_token
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
@@ -173,10 +173,6 @@ check("encaixe nasce com a presenca confirmada", detail.get("attendance_confirme
 check("encaixe nao envia email", sent == [], sent)
 later = now + timedelta(hours=2, minutes=30)
 check("o lembrete ignora o encaixe", squeeze_id not in [a.id for a in appointments_needing_reminder(session, later)])
-check(
-    "o auto-cancelamento ignora o encaixe",
-    squeeze_id not in [a.id for a in appointments_to_auto_cancel(session, later)],
-)
 
 # --- marcacao no passado ---
 sent.clear()

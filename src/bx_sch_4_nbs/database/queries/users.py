@@ -5,6 +5,7 @@ from sqlmodel import Session, col, select
 from bx_sch_4_nbs.database.exceptions import DuplicateResourceError
 from bx_sch_4_nbs.database.models import User, VerificationCode
 from bx_sch_4_nbs.database.types import UserRole
+from bx_sch_4_nbs.helpers.common import utc_now
 from bx_sch_4_nbs.helpers.security import (
     encrypt_email,
     encrypt_phone,
@@ -73,13 +74,20 @@ def get_user_by_phone(session: Session, phone: str) -> User | None:
     return session.exec(select(User).where(User.phone_hash == hash_phone(phone))).first()
 
 
-def activate_user(session: Session, user: User, password: str) -> None:
+def set_password(session: Session, user: User, password: str) -> None:
+    """Sets a new password. Every login token issued before now stops working (see get_current_user),
+    and any code still waiting by email is thrown away."""
     user.password_hash = hash_password(password)
-    user.is_active = True
-    user.email_verified = True
+    user.password_changed_at = utc_now()
     session.add(user)
 
     session.exec(delete(VerificationCode).where(col(VerificationCode.user_id) == user.id))
+
+
+def activate_user(session: Session, user: User, password: str) -> None:
+    user.is_active = True
+    user.email_verified = True
+    set_password(session, user, password)
 
 
 def list_agenda_subscribers(session: Session) -> list[User]:

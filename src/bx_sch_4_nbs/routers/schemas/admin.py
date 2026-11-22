@@ -5,7 +5,12 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from bx_sch_4_nbs.database.models import Appointment, User
-from bx_sch_4_nbs.database.queries.schedule import duration_minutes, is_deposit_overdue, is_refund_due
+from bx_sch_4_nbs.database.queries.schedule import (
+    duration_minutes,
+    is_deposit_overdue,
+    is_deposit_required,
+    is_refund_due,
+)
 from bx_sch_4_nbs.database.types import (
     AppointmentStatus,
     CancellationReason,
@@ -13,6 +18,7 @@ from bx_sch_4_nbs.database.types import (
     NailArtLevel,
     NailSize,
     Service,
+    TradeItem,
 )
 from bx_sch_4_nbs.routers.schemas.types import InstagramHandle, PhoneNumber, StudioDatetime, UtcDatetime
 
@@ -63,6 +69,7 @@ class AdminAppointmentResult(BaseModel):
     service: Service
     nail_size: NailSize | None
     nail_art_level: NailArtLevel | None
+    trade_item: TradeItem | None
     broken_nails: int
     has_other_professional_nails: bool
     estimated_price: Decimal
@@ -76,6 +83,8 @@ class AdminAppointmentResult(BaseModel):
     duration_minutes: int
     client: ClientSummary
     deposit_paid: bool
+    # Whether this service needs the deposit at all (the rule stays here, not in the frontend).
+    deposit_required: bool
     attendance_confirmed: bool
     deposit_overdue: bool
     refund_due: bool
@@ -107,6 +116,7 @@ class AdminAppointmentResult(BaseModel):
             service=appointment.service,
             nail_size=appointment.nail_size,
             nail_art_level=appointment.nail_art_level,
+            trade_item=appointment.trade_item,
             broken_nails=appointment.broken_nails,
             has_other_professional_nails=appointment.has_other_professional_nails,
             estimated_price=appointment.estimated_price,
@@ -120,6 +130,7 @@ class AdminAppointmentResult(BaseModel):
             duration_minutes=duration_minutes(appointment),
             client=client,
             deposit_paid=deposit_paid,
+            deposit_required=is_deposit_required(appointment.service),
             attendance_confirmed=attendance_confirmed,
             deposit_overdue=deposit_overdue,
             refund_due=refund_due,
@@ -166,7 +177,7 @@ class NewClient(BaseModel):
 class StudioAppointmentDetails(BaseModel):
     """What the studio books or changes. Used as is to change an appointment."""
 
-    # Not based on AppointmentDetails on purpose: the client rules (and the OTHER ban) do not apply here.
+    # Not based on AppointmentDetails on purpose: the client rules (and the studio-only ban) do not apply here.
     scheduled_at: UtcDatetime
     service: Service
     nail_size: NailSize | None = None
@@ -175,16 +186,33 @@ class StudioAppointmentDetails(BaseModel):
     has_other_professional_nails: bool = False
     estimated_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
     notes: str | None = Field(default=None, max_length=1000)
+    # Trades only: what is traded, and how long it takes (the other services use their usual duration).
+    trade_item: TradeItem | None = None
+    duration_minutes: int | None = Field(default=None, ge=15, le=600)
 
     @model_validator(mode="after")
     def validate_details(self) -> Self:
-        if self.service in (Service.REMOVAL, Service.OTHER):
+        if self.service == Service.TRADING:
+            if self.trade_item is None:
+                raise ValueError("Choose what is traded: nails or press-ons.")
+            if self.duration_minutes is None:
+                raise ValueError("Set how long the trade takes.")
+            if self.estimated_price != 0:
+                raise ValueError("A trade has no price.")
+            # Size and nail art are optional (only for the history), and only for nails.
+            if self.trade_item == TradeItem.PRESS_ONS and (self.nail_size or self.nail_art_level):
+                raise ValueError("Press-ons do not take nail size or nail art level.")
+            if self.broken_nails:
+                raise ValueError("A trade does not take broken nails.")
+        elif self.trade_item is not None or self.duration_minutes is not None:
+            raise ValueError("Only a trade takes a trade item and a duration.")
+        elif self.service in (Service.REMOVAL, Service.OTHER, Service.PRESS_ON):
             if self.nail_size is not None or self.nail_art_level is not None or self.broken_nails:
                 raise ValueError(f"{self.service.value} does not take nail size, nail art level or broken nails.")
         elif self.nail_size is None or self.nail_art_level is None:
             raise ValueError("Nail size and nail art level are required for this service.")
 
-        if self.service == Service.OTHER and not (self.notes and self.notes.strip()):
+        if self.service in (Service.OTHER, Service.TRADING) and not (self.notes and self.notes.strip()):
             raise ValueError("Describe the service in notes.")
 
         # BookedSlot compares exact instants: without this, 13:00:00 and 13:00:30 would not collide.
@@ -240,7 +268,34 @@ class CategoryExpenses(BaseModel):
     amount: Decimal
 
 
-class MonthReportResult(BaseModel):
+class TradeReport(BaseModel):
+    trade_item: TradeItem
+    completed: int
+    worked_minutes: int
+
+
+class PeriodSummary(BaseModel):
+    """Clients, days and the averages of a period. Each value is null when there is nothing to divide by."""
+
+    clients: int
+    days_worked: int
+    revenue_per_hour: Decimal | None
+    average_per_client: Decimal | None
+    average_per_day: Decimal | None
+    cost_per_client: Decimal | None
+    profit_per_client: Decimal | None
+
+
+class YearTotals(PeriodSummary):
+    completed: int
+    worked_minutes: int
+    total_revenue: Decimal
+    expenses: Decimal
+    profit: Decimal
+    trades: int
+
+
+class MonthReportResult(PeriodSummary):
     month: int
     completed: int
     worked_minutes: int
@@ -254,12 +309,17 @@ class MonthReportResult(BaseModel):
     expenses: Decimal
     expenses_by_category: list[CategoryExpenses]
     profit: Decimal
+    # Trades: apart from the income and from "per hour worked".
+    trades: int
+    trade_minutes: int
+    trades_by_item: list[TradeReport]
 
 
 class YearReport(BaseModel):
     year: int
     deposit_amount: Decimal
     months: list[MonthReportResult]
+    totals: YearTotals
 
 
 class ClientNotes(BaseModel):
