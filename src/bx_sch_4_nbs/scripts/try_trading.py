@@ -86,7 +86,7 @@ check("no price", trade.get("estimated_price") in ("0", "0.00"), trade.get("esti
 check("the duration she set (2h)", trade.get("duration_minutes") == 120, trade.get("duration_minutes"))
 check("what was traded is kept", trade.get("trade_item") == "Nails", trade.get("trade_item"))
 check("no deposit", trade.get("deposit_required") is False, trade.get("deposit_required"))
-check("the booking email says no deposit", bool(sent) and sent[-1][-1] is False)
+check("the booking email says no deposit", bool(sent) and sent[-1][2] is False)
 
 r = book(days=1, trade_item="Press-ons", duration_minutes=90)
 check("trade of press-ons -> 201", r.status_code == 201, r.text)

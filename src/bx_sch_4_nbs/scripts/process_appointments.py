@@ -9,7 +9,6 @@ from bx_sch_4_nbs.database.queries.schedule import (
     appointments_needing_reminder,
     mark_reminder_sent,
 )
-from bx_sch_4_nbs.helpers.authentication import create_attendance_token
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
 from bx_sch_4_nbs.helpers.email import send_attendance_reminder
 from bx_sch_4_nbs.helpers.security import email_or_none
@@ -25,16 +24,15 @@ def process_reminders(session: Session, now: datetime) -> int:
         if client is None or appointment.id is None:
             continue
 
-        appointment_date = to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M")
-        # Confirming is optional: the link works until the appointment starts.
-        token = create_attendance_token(appointment.id, appointment.scheduled_at)
         email_client = email_or_none(client.email_encrypted)
         if email_client is None:
             # A regular client without an email yet: not marked as sent, so it still goes out
             # if she checks in before the appointment.
             continue
 
-        email_sent = send_attendance_reminder(email_client, appointment_date, token)
+        email_sent = send_attendance_reminder(
+            email_client, to_studio_time(appointment.scheduled_at), to_studio_time(now).date()
+        )
 
         if email_sent:
             mark_reminder_sent(session, appointment, now)

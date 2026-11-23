@@ -79,7 +79,8 @@ check(
 )
 check("sabado aberto por excecao", all(open_ for open_, _ in days["2031-03-08"].values()))
 check("domingo fechado por padrao", not any(open_ for open_, _ in days["2031-03-09"].values()))
-check("segunda fechada mesmo com excecao", not any(open_ for open_, _ in days["2031-03-03"].values()))
+check("segunda aberta pelo estudio (excecao)", all(open_ for open_, _ in days["2031-03-03"].values()))
+check("segunda fechada por padrao", not any(open_ for open_, _ in days["2031-03-10"].values()))
 check("horario marcado aparece como ocupado", days["2031-03-05"]["10:00"] == (True, True))
 
 session.add(PublishedMonth(year=2031, month=3))
@@ -87,6 +88,10 @@ session.commit()
 check("mes publicado: published_at preenchido", agenda(2031, 3).json()["detail"]["published_at"] is not None)
 check("mes invalido: 422", agenda(2031, 13).status_code == 422)
 check("sem login: 401", client.get("/v1/admin/agenda", params={"year": 2031, "month": 3}).status_code == 401)
+
+# The studio opens a Monday through the API (it used to refuse Mondays).
+r = client.put("/v1/admin/schedule-exceptions", json={"day": "2031-03-17", "is_open": True}, headers=ADMIN)
+check("abrir uma segunda pela API -> aceite", r.status_code in (200, 201), r.text[:200])
 
 transaction.rollback()
 connection.close()

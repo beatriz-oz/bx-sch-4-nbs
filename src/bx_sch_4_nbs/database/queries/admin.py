@@ -11,6 +11,7 @@ from bx_sch_4_nbs.database.exceptions import (
     AppointmentTooEarlyError,
     CancellationNotAllowedError,
     ResourceDoesNotExistError,
+    ResourceInUseError,
 )
 from bx_sch_4_nbs.database.models import Appointment, User
 from bx_sch_4_nbs.database.queries import changes, prices, schedule
@@ -382,29 +383,49 @@ def recent_cancellations(session: Session, now: datetime) -> list[tuple[Appointm
 
 def clients_overview(
     session: Session, *, registered: bool, now: datetime
-) -> list[tuple[User, int, datetime | None, datetime | None]]:
+) -> list[tuple[User, int, datetime | None, datetime | None, int]]:
     """
     The clients with password (registered) or without (pending), each with the number of
-    completed visits, the last visit and the next appointment. One query with LEFT JOIN,
-    so clients who never booked are listed too.
+    completed visits, the last visit, the next appointment and how many appointments she ever had
+    (any status). One query with LEFT JOIN, so clients who never booked are listed too.
     """
     completed = col(Appointment.status) == AppointmentStatus.COMPLETED
     upcoming = col(Appointment.status).in_(schedule.ACTIVE_STATUSES) & (col(Appointment.scheduled_at) > now)
 
-    return list(
+    rows = session.exec(
+        select(
+            User,
+            func.count(case((completed, col(Appointment.id)))),
+            func.max(case((completed, col(Appointment.scheduled_at)))),
+            func.min(case((upcoming, col(Appointment.scheduled_at)))),
+        )
+        .join(Appointment, col(Appointment.user_id) == col(User.id), isouter=True)
+        .where(col(User.role) == UserRole.USER, col(User.is_active).is_(registered))
+        .group_by(col(User.id))
+        .order_by(col(User.name), col(User.last_name))
+    ).all()
+    # Every appointment, any status (a second query: select() types at most 4 columns).
+    totals = dict(
         session.exec(
-            select(
-                User,
-                func.count(case((completed, col(Appointment.id)))),
-                func.max(case((completed, col(Appointment.scheduled_at)))),
-                func.min(case((upcoming, col(Appointment.scheduled_at)))),
-            )
-            .join(Appointment, col(Appointment.user_id) == col(User.id), isouter=True)
-            .where(col(User.role) == UserRole.USER, col(User.is_active).is_(registered))
-            .group_by(col(User.id))
-            .order_by(col(User.name), col(User.last_name))
+            select(Appointment.user_id, func.count(col(Appointment.id))).group_by(col(Appointment.user_id))
         ).all()
     )
+    return [(user, visits, last, upcoming_at, totals.get(user.id, 0)) for user, visits, last, upcoming_at in rows]
+
+
+def delete_pending_client(session: Session, user_id: int) -> None:
+    """Deletes a pending client (no password) who never had an appointment, e.g. one added by mistake.
+    One with appointments stays: they are part of the history and of the reports."""
+    user = get_client(session, user_id)
+    if user.is_active:
+        raise ResourceInUseError("Only pending clients (without a password) can be deleted.")
+    has_appointments = session.exec(select(Appointment.id).where(Appointment.user_id == user_id).limit(1)).first()
+    if has_appointments is not None:
+        raise ResourceInUseError(
+            "This client has appointments (past, upcoming or cancelled): she stays, as part of the history."
+        )
+    session.delete(user)
+    session.flush()
 
 
 def set_client_approval(session: Session, user_id: int, approved: bool, now: datetime) -> User:

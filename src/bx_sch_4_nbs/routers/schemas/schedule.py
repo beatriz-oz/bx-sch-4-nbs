@@ -5,8 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
 from bx_sch_4_nbs.routers.schemas.types import StudioDatetime
 
-MONDAY = 0
-
 
 class ScheduleExceptionSet(BaseModel):
     day: date
@@ -16,8 +14,6 @@ class ScheduleExceptionSet(BaseModel):
     @field_validator("day")
     @classmethod
     def validate_day(cls, value: date) -> date:
-        if value.weekday() == MONDAY:
-            raise ValueError("Mondays are always closed to clients.")
         if value < to_studio_time(utc_now()).date():
             raise ValueError("The day is in the past.")
         return value

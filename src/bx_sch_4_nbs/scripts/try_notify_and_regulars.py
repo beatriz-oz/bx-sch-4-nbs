@@ -263,5 +263,102 @@ rui_auth = {"Authorization": f"Bearer {r.json()['detail']['access_token']}"}
 r = client.post("/v1/auth/me/activate", headers=rui_auth, json={"password": "rui-password-1"})
 check("a client not approved yet -> 403", r.status_code == 403, r.status_code)
 
+# --- Deleting pending clients: only without a password and without appointments ---
+pending = client.get("/v1/admin/clients/overview", params={"group": "pending"}, headers=ADMIN).json()["detail"]
+noa = next((c for c in pending if c["instagram"] == "noa.only"), {})
+check("a pending client who never booked can be deleted", noa.get("can_delete") is True, noa)
+r = client.delete(f"/v1/admin/clients/{noa.get('id')}", headers=ADMIN)
+check("delete her -> 200", r.status_code == 200, r.text)
+pending = client.get("/v1/admin/clients/overview", params={"group": "pending"}, headers=ADMIN).json()["detail"]
+check("she is gone from the pending clients", all(c["id"] != noa.get("id") for c in pending))
+check("her profile -> 404", client.get(f"/v1/admin/clients/{noa.get('id')}", headers=ADMIN).status_code == 404)
+
+registered = client.get("/v1/admin/clients/overview", params={"group": "registered"}, headers=ADMIN).json()["detail"]
+mia_row = next((c for c in registered if c["id"] == mia_id), {})
+check("a registered client cannot be deleted (flag)", mia_row.get("can_delete") is False, mia_row)
+r = client.delete(f"/v1/admin/clients/{mia_id}", headers=ADMIN)
+check("...nor by the API -> 409", r.status_code == 409, r.status_code)
+
+zoe = User(name="Zoe", last_name="Pending", instagram="zoe.pending.test", approved_at=None)
+session.add(zoe)
+session.flush()
+assert zoe.id is not None
+session.add(
+    Appointment(
+        user_id=zoe.id,
+        scheduled_at=now - timedelta(days=40),
+        status=AppointmentStatus.CANCELLED,
+        service=Service.REMOVAL,
+        estimated_price=Decimal(15),
+        policy_id=policy.id,
+    )
+)
+session.commit()
+pending = client.get("/v1/admin/clients/overview", params={"group": "pending"}, headers=ADMIN).json()["detail"]
+zoe_row = next((c for c in pending if c["id"] == zoe.id), {})
+check(
+    "a pending client with a (cancelled) appointment cannot be deleted (flag)",
+    zoe_row.get("can_delete") is False,
+    zoe_row,
+)
+r = client.delete(f"/v1/admin/clients/{zoe.id}", headers=ADMIN)
+check("...nor by the API -> 409 with the reason", r.status_code == 409 and "history" in r.text, r.text)
+check("a client who does not exist -> 404", client.delete("/v1/admin/clients/999999", headers=ADMIN).status_code == 404)
+check("a client cannot delete -> 401/403", client.delete(f"/v1/admin/clients/{zoe.id}").status_code in (401, 403))
+
+# --- Continue the activation: she checked in but closed the window before the password ---
+r = client.post(
+    "/v1/admin/pre-approved-instagrams", json={"instagram": "ivy.later", "client": {"name": "Ivy"}}, headers=ADMIN
+)
+check("another regular from her Instagram -> 201", r.status_code == 201, r.text)
+IVY_EMAIL = "ivy@regular-test.pt"
+codes.clear()
+client.post(
+    "/v1/auth/checkin/start",
+    json={"instagram": "ivy.later", "name": "Ivy", "last_name": "Lima", "email": IVY_EMAIL, "phone": "+351917444011"},
+)
+r = client.post("/v1/auth/checkin/verify", json={"instagram": "ivy.later", "code": codes.get(IVY_EMAIL, "")})
+check("her check-in works (and then she closes the popup)", r.status_code == 200, r.text)
+
+codes.clear()
+r = client.post(
+    "/v1/auth/checkin/start",
+    json={
+        "instagram": "ivy.later",
+        "name": "X",
+        "last_name": "Y",
+        "email": "other@regular-test.pt",
+        "phone": "+351917444012",
+    },
+)
+check("the first-appointment form again -> 409 (her details are not overwritten)", r.status_code == 409, r.status_code)
+
+r = client.post("/v1/auth/checkin/resume", json={"instagram": "@Ivy.Later"})
+check(
+    "continue the activation -> code to the email she gave", r.status_code == 200 and list(codes) == [IVY_EMAIL], r.text
+)
+check("...masked in the answer", r.json()["detail"]["sent_to"] == "i***@regular-test.pt", r.text)
+r = client.post("/v1/auth/checkin/verify", json={"instagram": "ivy.later", "code": codes.get(IVY_EMAIL, "")})
+check("the code logs her in again", r.status_code == 200 and "access_token" in r.text, r.text)
+ivy_auth = {"Authorization": f"Bearer {r.json()['detail']['access_token']}"}
+check(
+    "...ready for the password (the popup)",
+    client.get("/v1/auth/me", headers=ivy_auth).json()["detail"]["can_create_password"] is True,
+)
+r = client.post("/v1/auth/me/activate", headers=ivy_auth, json={"password": "ivy-password-1"})
+check("she creates her password -> 200", r.status_code == 200, r.text)
+r = client.post("/v1/auth/checkin/resume", json={"instagram": "ivy.later"})
+check("once active, nothing to continue -> 409", r.status_code == 409, r.status_code)
+
+unknown = client.post("/v1/auth/checkin/resume", json={"instagram": "nobody.at.all"})
+not_approved = client.post("/v1/auth/checkin/resume", json={"instagram": "new.not.approved"})
+check(
+    "unknown handle and a client not approved: the same 409 answer",
+    unknown.status_code == not_approved.status_code == 409 and unknown.json() == not_approved.json(),
+    (unknown.text, not_approved.text),
+)
+r = client.post("/v1/auth/checkin/resume", json={"instagram": "zoe.pending.test"})
+check("an account never checked in (no email) -> 409", r.status_code == 409, r.status_code)
+
 transaction.rollback()
 connection.close()

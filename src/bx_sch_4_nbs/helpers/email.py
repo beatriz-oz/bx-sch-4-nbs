@@ -1,6 +1,7 @@
 import calendar
 import logging
 import smtplib
+from datetime import date, datetime, timedelta
 from email.message import EmailMessage
 
 from bx_sch_4_nbs.config import settings
@@ -59,7 +60,71 @@ def send_emails(messages: list[EmailMessage]) -> set[str]:
 
 
 def studio_address_block() -> str:
-    return f"Address:\n{settings.studio_address}\n\n"
+    return f"Studio address:\n{settings.studio_address}\n\n{settings.studio_directions}\n\n"
+
+
+SIGN_OFF = "See you there! 🌸\n\n~Scooby"
+
+
+def _day_and_time(when: str) -> tuple[str, str]:
+    """ "25/11/2026 17:00" -> ("25/11/2026", "17:00")."""
+    day, _, hour = when.partition(" ")
+    return day, hour
+
+
+def _deposit_text() -> str:
+    amount = settings.deposit_amount
+    euros = f"€{amount:.0f}" if amount == amount.to_integral_value() else f"€{amount:.2f}"
+    ways = []
+    if settings.payment_mbway:
+        ways.append(f"via MB Way to {settings.payment_mbway}")
+    if settings.payment_revolut:
+        ways.append(f"Revolut to {settings.payment_revolut}")
+    how = (
+        f"You can send it {' or '.join(ways)}."
+        if ways
+        else "You can send it via MB Way or Revolut: @nailsbyscooby will send you the details on Instagram."
+    )
+    return (
+        f"To confirm your booking, a {euros} deposit is required. {how} "
+        "Write down your instagram @ on the transfer description.\n\n"
+        "The appointment is only confirmed after receipt of the deposit. Upon registration and receipt of your "
+        "deposit, you will receive a confirmation email."
+    )
+
+
+def send_booking_received(to: str, when: str) -> None:
+    """Right after booking (by the client, or by the studio before the deposit): how to pay the deposit."""
+    day, hour = _day_and_time(when)
+    send_email(
+        to=to,
+        subject="Thank you for booking with Nails by Scooby ✨",
+        body=(
+            "Thank you for booking with Nails by Scooby✨\n\n"
+            f"Your appointment has been reserved for {day} at {hour}.\n\n"
+            f"{_deposit_text()}\n\n"
+            "All information regarding payments and deposit refunds is available in the cancellation policies "
+            "provided on Instagram or on the booking platform.\n\n"
+            f"{studio_address_block()}"
+            f"{SIGN_OFF}"
+        ),
+    )
+
+
+def send_appointment_confirmed(to: str, when: str) -> None:
+    """The deposit is registered (or the appointment needs none): the appointment is confirmed."""
+    day, hour = _day_and_time(when)
+    send_email(
+        to=to,
+        subject="Your appointment is confirmed - Nails by Scooby",
+        body=(
+            f"Your appointment has been confirmed for {day} at {hour}.\n\n"
+            "You can access your client file to change appointment information or cancel it:\n"
+            f"{settings.frontend_url}/appointments\n\n"
+            f"{studio_address_block()}"
+            f"{SIGN_OFF}"
+        ),
+    )
 
 
 def send_email(to: str, subject: str, body: str) -> bool:
@@ -229,44 +294,6 @@ def send_cancelled_appointment_notification_client(to: str, when: str, deposit_p
     )
 
 
-def send_attendance_reminder(to: str, when: str, token: str) -> bool:
-    # Only a reminder: confirming is optional and nothing is cancelled without it.
-    # The studio sees who confirmed, and knows whom to message on Instagram.
-    url = f"{settings.frontend_url}/confirm-attendance?token={token}"
-    email_sent = send_email(
-        to=to,
-        subject="Reminder: your appointment is tomorrow - Nails by Scooby",
-        body=(
-            "Hello!\n\n"
-            f"This is a reminder of your appointment on {when} (Lisbon time). We are looking forward to seeing you!\n\n"
-            f"{studio_address_block()}"
-            "It would help us a lot if you let us know you are coming:\n"
-            f"{url}\n\n"
-            f"If you cannot come, please cancel as soon as possible. Cancellations less than "
-            f"{settings.free_cancellation_hours} hours before do not have the deposit refunded, as stated "
-            "in the booking policies.\n\n"
-            "If you do not recognize this appointment, contact @nailsbyscooby on Instagram immediately."
-        ),
-    )
-    return email_sent
-
-
-def send_deposit_confirmation(to: str, when: str) -> None:
-    send_email(
-        to=to,
-        subject="Your deposit has been received - Nails by Scooby",
-        body=(
-            "Hello!\n\n"
-            f"We have received your deposit, and your appointment on {when} (Lisbon time) is confirmed.\n\n"
-            f"{studio_address_block()}"
-            f"{settings.reminder_hours_before} hours before the appointment, you will receive a reminder email.\n"
-            f"If you need to cancel, please do so more than {settings.free_cancellation_hours} hours before "
-            "the appointment to have your deposit refunded, as stated in the booking policies.\n\n"
-            "If you did not make this payment, contact @nailsbyscooby on Instagram."
-        ),
-    )
-
-
 def send_cancelled_by_studio_notification(to: str, when: str, deposit_paid: bool, message: str | None) -> None:
     message_text = f"Message from Scooby: {message}\n\n" if message else ""
     deposit_status = "Your deposit has been paid and will be refunded."
@@ -286,29 +313,36 @@ def send_cancelled_by_studio_notification(to: str, when: str, deposit_paid: bool
     )
 
 
-def send_booked_by_studio_notification(
-    to: str, when: str, details: str, deposit_required: bool, deposit_paid: bool = False
-) -> None:
-    if deposit_paid:
-        deposit_line = "We have received your deposit: your appointment is confirmed.\n\n"
-    elif deposit_required:
-        deposit_line = "To secure your appointment, @nailsbyscooby will contact you on Instagram about the deposit.\n\n"
-    else:
-        deposit_line = ""
-    send_email(
+def send_attendance_reminder(to: str, appointment_at: datetime, today: date) -> bool:
+    """The day before. appointment_at in Lisbon time; "tomorrow" when it is, the date otherwise."""
+    hour = appointment_at.strftime("%H:%M")
+    when = (
+        f"tomorrow at {hour}"
+        if appointment_at.date() == today + timedelta(days=1)
+        else f"on {appointment_at:%d/%m/%Y} at {hour}"
+    )
+    return send_email(
         to=to,
-        subject=f"Your appointment on {when} - Nails by Scooby",
+        subject="Your appointment is coming up! ✨",
         body=(
-            "Hello!\n\n"
-            f"Nails by Scooby booked an appointment for you on {when} (Lisbon time).\n\n"
-            f"{details}\n\n"
+            "Your appointment is coming up! ✨\n\n"
+            f"Just a reminder that we have an appointment {when}.\n\n"
             f"{studio_address_block()}"
-            f"{deposit_line}"
-            "Please read our booking policies, they apply to this appointment:\n"
-            f"{settings.frontend_url}/policies\n\n"
-            "If you do not recognize this appointment, contact @nailsbyscooby on Instagram."
+            f"{SIGN_OFF}"
         ),
     )
+
+
+def send_deposit_confirmation(to: str, when: str) -> None:
+    send_appointment_confirmed(to, when)
+
+
+def send_booked_by_studio_notification(to: str, when: str, deposit_required: bool, deposit_paid: bool = False) -> None:
+    """The studio booked for her: confirmed at once if the deposit is paid or not needed, otherwise how to pay it."""
+    if deposit_paid or not deposit_required:
+        send_appointment_confirmed(to, when)
+    else:
+        send_booking_received(to, when)
 
 
 def send_changed_by_studio_notification(to: str, previous_when: str, when: str, details: str) -> None:

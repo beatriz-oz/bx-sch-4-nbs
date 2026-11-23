@@ -84,7 +84,7 @@ booked = r.json()["detail"] if r.status_code == 201 else {}
 check("its price is the one she set", Decimal(booked.get("estimated_price", "0")) == Decimal(38), booked)
 check("3 hours long", booked.get("duration_minutes") == 180, booked.get("duration_minutes"))
 check("no deposit needed", booked.get("deposit_required") is False, booked.get("deposit_required"))
-check("the booking email says no deposit", bool(sent) and sent[-1][-1] is False, sent[-1:] if sent else sent)
+check("the booking email says no deposit", bool(sent) and sent[-1][2] is False, sent[-1:] if sent else sent)
 
 r = book(scheduled_at=(far + timedelta(days=1)).isoformat() + "Z", nail_size="M", nail_art_level="Level 1")
 check("press-on with size and nail art -> 422", r.status_code == 422, r.status_code)

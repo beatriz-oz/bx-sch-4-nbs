@@ -20,8 +20,16 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = False
     email_from: str = "Nails by Scooby <no-reply@nailsbyscooby.com>"
     studio_notification_email: str = "studio@nailsbyscooby.local"
-    # Where the appointments happen: shown in the reminder email.
-    studio_address: str = "Rua de Passos Manuel, 228 – 3.º Esq.\n4000-382 Porto\nPortugal"
+    # Where the appointments happen, and how to get there: in the booking, confirmation and reminder emails.
+    studio_address: str = "Rua de Passos Manuel 228, 3rd floor, left"
+    studio_directions: str = (
+        "You can take the metro to Bolhão and walk 6 minutes, or take buses 200, 207, 300, 302, 400, 904 and 905 "
+        "(PR. D. João I stop) and walk 7 minutes."
+    )
+    # Where clients send the deposit. Personal data: set them in .env (PAYMENT_MBWAY, PAYMENT_REVOLUT),
+    # never here, as this repository is public. Empty: the email says the details come on Instagram.
+    payment_mbway: str = ""
+    payment_revolut: str = ""
     cors_origins: list[str] = ["http://localhost:4200"]
     appointments_timezone: str = "Europe/Lisbon"
     # The default slots of a day; a given day can have its own (table day_slots).

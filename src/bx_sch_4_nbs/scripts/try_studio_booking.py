@@ -126,7 +126,7 @@ check(
 )
 check(
     "email de boas-vindas enviado, com aviso do sinal",
-    bool(sent) and sent[-1][0] == "bia.new@client.com" and sent[-1][3] is True,
+    bool(sent) and sent[-1][0] == "bia.new@client.com" and sent[-1][2] is True,
     sent[-1:],
 )
 check(
@@ -152,7 +152,7 @@ check("OTHER para cliente existente: 201", response.status_code == 201, response
 check("o OTHER guarda a descricao em notes", detail.get("notes") == "Repair of 1 broken nail")
 check(
     "email do OTHER sem aviso de sinal",
-    bool(sent) and sent[-1][3] is False and "Repair of 1 broken nail" in sent[-1][2],
+    bool(sent) and sent[-1][2] is False,
     sent[-1:],
 )
 
@@ -301,7 +301,7 @@ check(
 )
 check(
     "com sinal pago: o email diz que o sinal foi recebido",
-    bool(sent) and len(sent[-1]) == 5 and sent[-1][4] is True,
+    bool(sent) and len(sent[-1]) == 4 and sent[-1][3] is True,
     sent[-1:],
 )
 pending = client.get("/v1/admin/payments", headers=ADMIN).json()["detail"]["pending_deposits"]
@@ -336,7 +336,7 @@ check(
 )
 check(
     "sem a caixa marcada: o email avisa do sinal",
-    bool(sent) and sent[-1][3] is True and sent[-1][4] is False,
+    bool(sent) and sent[-1][2] is True and sent[-1][3] is False,
     sent[-1:],
 )
 
