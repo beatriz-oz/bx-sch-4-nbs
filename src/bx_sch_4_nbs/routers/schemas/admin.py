@@ -347,6 +347,10 @@ class YearReport(BaseModel):
     totals: YearTotals
 
 
+class InstagramChange(BaseModel):
+    instagram: InstagramHandle
+
+
 class ClientNotes(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 

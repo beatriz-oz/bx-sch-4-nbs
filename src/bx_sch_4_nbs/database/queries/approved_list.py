@@ -34,6 +34,19 @@ def delete_pre_approved_instagram(session: Session, entry_id: int) -> None:
     session.delete(entry)
 
 
+def get_by_instagram(session: Session, instagram: str) -> PreApprovedInstagram | None:
+    return session.exec(select(PreApprovedInstagram).where(PreApprovedInstagram.instagram == instagram)).first()
+
+
+def rename(session: Session, entry: PreApprovedInstagram, instagram: str) -> None:
+    entry.instagram = instagram
+    session.add(entry)
+    try:
+        session.flush()
+    except IntegrityError as error:
+        raise DuplicateResourceError(f"@{instagram} is already pre-approved.") from error
+
+
 def is_pre_approved(session: Session, instagram: str) -> bool:
     entry = session.exec(select(PreApprovedInstagram).where(PreApprovedInstagram.instagram == instagram)).first()
     return entry is not None
