@@ -50,6 +50,7 @@ from bx_sch_4_nbs.routers.schemas.admin import (
     ExpenseSet,
     FinalPriceDetails,
     FinalPriceEstimate,
+    InstagramChange,
     MonthReportResult,
     NewPolicy,
     NewPreApprovedInstagram,
@@ -158,6 +159,23 @@ def add_pre_approved_instagram(
         admin.set_client_approval(session, client.id, True, utc_now())
         result.client_id = client.id
 
+    return PreApprovedInstagramResponse(status="OK", detail=result)
+
+
+@router.put(
+    "/pre-approved-instagrams/{entry_id}",
+    description="Fix a pre-approved handle (e.g. a typo). A client account created with it is fixed too",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Entry does not exist"},
+        status.HTTP_409_CONFLICT: {"description": "The new handle is already pre-approved or used by an account"},
+    },
+)
+def change_pre_approved_instagram(
+    session: DatabaseSession, entry_id: int, data: InstagramChange
+) -> PreApprovedInstagramResponse:
+    entry, client = admin.change_pre_approved_instagram(session, entry_id, data.instagram)
+    result = PreApprovedInstagramResult.model_validate(entry)
+    result.client_id = client.id if client is not None else None
     return PreApprovedInstagramResponse(status="OK", detail=result)
 
 
@@ -821,6 +839,19 @@ def delete_client(session: DatabaseSession, client_id: int) -> MessageResponse:
 )
 def set_client_approval(session: DatabaseSession, client_id: int, data: ClientApproval) -> ClientProfileResponse:
     user = admin.set_client_approval(session, client_id, data.approved, utc_now())
+    return ClientProfileResponse(status="OK", detail=client_profile(session, user))
+
+
+@router.put(
+    "/clients/{client_id}/instagram",
+    description="Fix a client's Instagram (e.g. a typo). Her pre-approved entry is fixed too, so she can still check in",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Client does not exist"},
+        status.HTTP_409_CONFLICT: {"description": "The handle is used by another account"},
+    },
+)
+def set_client_instagram(session: DatabaseSession, client_id: int, data: InstagramChange) -> ClientProfileResponse:
+    user = admin.change_client_instagram(session, client_id, data.instagram)
     return ClientProfileResponse(status="OK", detail=client_profile(session, user))
 
 
