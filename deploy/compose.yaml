@@ -39,6 +39,8 @@ services:
       SMTP_USE_TLS: ${SMTP_USE_TLS:-false}
       EMAIL_FROM: ${EMAIL_FROM:-Nails by Scooby <no-reply@nailsbyscooby.com>}
       STUDIO_NOTIFICATION_EMAIL: ${STUDIO_NOTIFICATION_EMAIL}
+      PAYMENT_MBWAY: ${PAYMENT_MBWAY:-}
+      PAYMENT_REVOLUT: ${PAYMENT_REVOLUT:-}
     depends_on:
       db:
         condition: service_healthy

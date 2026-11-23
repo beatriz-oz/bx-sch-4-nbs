@@ -303,6 +303,11 @@ class PeriodSummary(BaseModel):
     average_per_day: Decimal | None
     cost_per_client: Decimal | None
     profit_per_client: Decimal | None
+    # The agenda, done or not: clients booked (not cancelled, not no-shows) and deposits in hand.
+    booked_clients: int
+    booked_appointments: int
+    deposits_received: int
+    deposits_received_amount: Decimal
 
 
 class YearTotals(PeriodSummary):

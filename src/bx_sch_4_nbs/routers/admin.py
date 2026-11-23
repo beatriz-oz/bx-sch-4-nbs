@@ -618,7 +618,6 @@ def book_appointment(
             send_booked_by_studio_notification,
             email,
             to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
-            booking_details(appointment),
             is_deposit_required(appointment.service),
             appointment.deposit_paid_at is not None,
         )
@@ -785,6 +784,10 @@ def period_summary(report: reports.PeriodReport) -> dict[str, Any]:
         average_per_day=report.average_per_day,
         cost_per_client=report.cost_per_client,
         profit_per_client=report.profit_per_client,
+        booked_clients=report.booked_clients,
+        booked_appointments=report.booked_appointments,
+        deposits_received=report.deposits_received,
+        deposits_received_amount=report.deposits_received_amount,
     ).model_dump()
 
 

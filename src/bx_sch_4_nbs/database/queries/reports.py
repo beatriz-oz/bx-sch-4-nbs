@@ -7,9 +7,12 @@ from sqlmodel import Session, col, select
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.models import Appointment
 from bx_sch_4_nbs.database.queries.expenses import list_expenses
-from bx_sch_4_nbs.database.queries.schedule import duration_minutes
+from bx_sch_4_nbs.database.queries.schedule import duration_minutes, is_refund_due
 from bx_sch_4_nbs.database.types import AppointmentStatus, CancellationReason, ExpenseCategory, Service, TradeItem
 from bx_sch_4_nbs.helpers.common import to_studio_time, to_utc
+
+# What is booked for the month: everything except cancellations and no-shows.
+BOOKED_STATUSES = (AppointmentStatus.SCHEDULED, AppointmentStatus.CONFIRMED, AppointmentStatus.COMPLETED)
 
 # Cancellations where the studio keeps the deposit (as the policies say).
 KEPT_DEPOSIT_REASONS = (CancellationReason.CLIENT_LATE, CancellationReason.NOT_CONFIRMED)
@@ -51,6 +54,19 @@ class PeriodReport:
     # That is also why the year cannot just add up its months: it joins the sets.
     client_ids: set[int] = field(default_factory=set)
     days: set[date] = field(default_factory=set)
+    # The month's agenda, done or not: who is booked, and the deposits already in hand
+    # (paid and not given back, nor owed back after an early cancellation).
+    booked_client_ids: set[int] = field(default_factory=set)
+    booked_appointments: int = 0
+    deposits_received: int = 0
+
+    @property
+    def booked_clients(self) -> int:
+        return len(self.booked_client_ids)
+
+    @property
+    def deposits_received_amount(self) -> Decimal:
+        return settings.deposit_amount * self.deposits_received
 
     @property
     def clients(self) -> int:
@@ -124,6 +140,9 @@ def whole_year(months: list[MonthReport]) -> PeriodReport:
         year.trade_minutes += month.trade_minutes
         year.client_ids |= month.client_ids
         year.days |= month.days
+        year.booked_client_ids |= month.booked_client_ids
+        year.booked_appointments += month.booked_appointments
+        year.deposits_received += month.deposits_received
         for category, amount in month.expenses_by_category.items():
             year.expenses_by_category[category] = year.expenses_by_category.get(category, Decimal(0)) + amount
     return year
@@ -181,6 +200,16 @@ def year_report(session: Session, year: int) -> list[MonthReport]:
 
         if keeps_deposit(appointment):
             report.kept_deposits += 1
+
+        if appointment.status in BOOKED_STATUSES:
+            report.booked_appointments += 1
+            report.booked_client_ids.add(appointment.user_id)
+        if (
+            appointment.deposit_paid_at is not None
+            and appointment.deposit_refunded_at is None
+            and not is_refund_due(appointment)
+        ):
+            report.deposits_received += 1
 
     # Expenses already have a Lisbon date: no conversion needed.
     for expense in list_expenses(session, date(year, 1, 1), date(year, 12, 31)):

@@ -92,6 +92,14 @@ make(lisbon(2031, 3, 27, 10), AppointmentStatus.CANCELLED, cancellation_reason=C
 # 31 March 23:30 UTC is already 1 April 00:30 in Lisbon (summer time): it belongs to April.
 make(datetime(2031, 3, 31, 23, 30), AppointmentStatus.COMPLETED, final_price=Decimal(40))
 make(lisbon(2031, 3, 28, 10), AppointmentStatus.SCHEDULED)
+make(lisbon(2031, 3, 29, 10), AppointmentStatus.CONFIRMED, deposit_paid_at=paid)
+make(
+    lisbon(2031, 3, 30, 10),
+    AppointmentStatus.CANCELLED,
+    deposit_paid_at=paid,
+    deposit_refunded_at=paid,
+    cancellation_reason=CancellationReason.BY_STUDIO,
+)
 session.commit()
 
 response = client.get("/v1/admin/reports", params={"year": 2031}, headers=ADMIN)
@@ -113,7 +121,18 @@ check(
     march,
 )
 check("total: 60 + 20", Decimal(str(march.get("total_revenue"))) == Decimal(80))
-check("1 falta e 3 cancelamentos", march.get("no_shows") == 1 and march.get("cancellations") == 3)
+check("1 falta e 4 cancelamentos", march.get("no_shows") == 1 and march.get("cancellations") == 4)
+check(
+    "agenda: 4 marcacoes (2 concluidas, 1 agendada, 1 confirmada), sem canceladas nem faltas",
+    march.get("booked_appointments") == 4,
+    march.get("booked_appointments"),
+)
+check("agenda: 1 cliente diferente (todas da mesma)", march.get("booked_clients") == 1, march.get("booked_clients"))
+check(
+    "sinais em maos: falta + cancelamento tardio + confirmada (o cedo e devido, o devolvido nao conta)",
+    march.get("deposits_received") == 3 and Decimal(str(march.get("deposits_received_amount"))) == Decimal(30),
+    march,
+)
 by_service = {row["service"]: row for row in march.get("by_service", [])}
 check(
     "por servico: aplicacao e remocao separadas",

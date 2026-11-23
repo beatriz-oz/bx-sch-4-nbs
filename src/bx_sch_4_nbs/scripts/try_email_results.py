@@ -1,5 +1,6 @@
 import logging
 import smtplib
+from datetime import date, datetime
 from typing import Self
 
 from bx_sch_4_nbs.helpers import email
@@ -40,7 +41,7 @@ class DownSMTP(FakeSMTP):
 
 
 def reminder(to: str) -> bool:
-    return email.send_attendance_reminder(to, "15/10/2026 10:00", "abc")
+    return email.send_attendance_reminder(to, datetime(2026, 10, 15, 10, 0), date(2026, 10, 14))  # noqa: DTZ001
 
 
 setattr(email.smtplib, "SMTP", FakeSMTP)  # noqa: B010

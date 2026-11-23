@@ -119,6 +119,15 @@ def list_agenda_subscribers(session: Session) -> list[User]:
     )
 
 
+def set_name(session: Session, user: User, name: str | None, last_name: str | None) -> None:
+    if name is not None:
+        user.name = name
+    if last_name is not None:
+        user.last_name = last_name
+    session.add(user)
+    session.flush()
+
+
 def set_agenda_emails(session: Session, user: User, wants_agenda_emails: bool) -> None:
     user.wants_agenda_emails = wants_agenda_emails
     session.add(user)
