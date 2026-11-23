@@ -671,7 +671,7 @@ def get_clients_overview(
 
 
 def client_overview(
-    user: User, visits: int, last_visit: datetime | None, next_appointment: datetime | None
+    user: User, visits: int, last_visit: datetime | None, next_appointment: datetime | None, appointments: int
 ) -> ClientOverview:
     if user.id is None:
         raise RuntimeError("Client without id.")
@@ -689,6 +689,7 @@ def client_overview(
         visits=visits,
         last_visit=last_visit,
         next_appointment=next_appointment,
+        can_delete=not user.is_active and appointments == 0,
     )
 
 
@@ -706,6 +707,7 @@ def client_profile(session: DatabaseSession, user: User) -> ClientProfile:
             len(completed),
             max((a.scheduled_at for a in completed), default=None),
             min(upcoming, default=None),
+            len(appointments),
         ),
         studio_notes=user.studio_notes,
         total_spent=sum((a.final_price or a.estimated_price for a in completed), Decimal(0)),
@@ -793,6 +795,19 @@ def period_summary(report: reports.PeriodReport) -> dict[str, Any]:
 )
 def get_client_profile(session: DatabaseSession, client_id: int) -> ClientProfileResponse:
     return ClientProfileResponse(status="OK", detail=client_profile(session, admin.get_client(session, client_id)))
+
+
+@router.delete(
+    "/clients/{client_id}",
+    description="Delete a pending client (no password) who never had an appointment, e.g. one added by mistake",
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Client does not exist"},
+        status.HTTP_409_CONFLICT: {"description": "She has a password, or has appointments"},
+    },
+)
+def delete_client(session: DatabaseSession, client_id: int) -> MessageResponse:
+    admin.delete_pending_client(session, client_id)
+    return MessageResponse(status="OK", detail="Client deleted")
 
 
 @router.put(

@@ -271,6 +271,8 @@ class ClientOverview(ClientResult):
     visits: int
     last_visit: StudioDatetime | None
     next_appointment: StudioDatetime | None
+    # Pending and never booked: the studio may delete her (e.g. added by mistake).
+    can_delete: bool
 
 
 class ServiceReport(BaseModel):

@@ -263,5 +263,48 @@ rui_auth = {"Authorization": f"Bearer {r.json()['detail']['access_token']}"}
 r = client.post("/v1/auth/me/activate", headers=rui_auth, json={"password": "rui-password-1"})
 check("a client not approved yet -> 403", r.status_code == 403, r.status_code)
 
+# --- Deleting pending clients: only without a password and without appointments ---
+pending = client.get("/v1/admin/clients/overview", params={"group": "pending"}, headers=ADMIN).json()["detail"]
+noa = next((c for c in pending if c["instagram"] == "noa.only"), {})
+check("a pending client who never booked can be deleted", noa.get("can_delete") is True, noa)
+r = client.delete(f"/v1/admin/clients/{noa.get('id')}", headers=ADMIN)
+check("delete her -> 200", r.status_code == 200, r.text)
+pending = client.get("/v1/admin/clients/overview", params={"group": "pending"}, headers=ADMIN).json()["detail"]
+check("she is gone from the pending clients", all(c["id"] != noa.get("id") for c in pending))
+check("her profile -> 404", client.get(f"/v1/admin/clients/{noa.get('id')}", headers=ADMIN).status_code == 404)
+
+registered = client.get("/v1/admin/clients/overview", params={"group": "registered"}, headers=ADMIN).json()["detail"]
+mia_row = next((c for c in registered if c["id"] == mia_id), {})
+check("a registered client cannot be deleted (flag)", mia_row.get("can_delete") is False, mia_row)
+r = client.delete(f"/v1/admin/clients/{mia_id}", headers=ADMIN)
+check("...nor by the API -> 409", r.status_code == 409, r.status_code)
+
+zoe = User(name="Zoe", last_name="Pending", instagram="zoe.pending.test", approved_at=None)
+session.add(zoe)
+session.flush()
+assert zoe.id is not None
+session.add(
+    Appointment(
+        user_id=zoe.id,
+        scheduled_at=now - timedelta(days=40),
+        status=AppointmentStatus.CANCELLED,
+        service=Service.REMOVAL,
+        estimated_price=Decimal(15),
+        policy_id=policy.id,
+    )
+)
+session.commit()
+pending = client.get("/v1/admin/clients/overview", params={"group": "pending"}, headers=ADMIN).json()["detail"]
+zoe_row = next((c for c in pending if c["id"] == zoe.id), {})
+check(
+    "a pending client with a (cancelled) appointment cannot be deleted (flag)",
+    zoe_row.get("can_delete") is False,
+    zoe_row,
+)
+r = client.delete(f"/v1/admin/clients/{zoe.id}", headers=ADMIN)
+check("...nor by the API -> 409 with the reason", r.status_code == 409 and "history" in r.text, r.text)
+check("a client who does not exist -> 404", client.delete("/v1/admin/clients/999999", headers=ADMIN).status_code == 404)
+check("a client cannot delete -> 401/403", client.delete(f"/v1/admin/clients/{zoe.id}").status_code in (401, 403))
+
 transaction.rollback()
 connection.close()

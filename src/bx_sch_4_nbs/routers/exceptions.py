@@ -10,6 +10,7 @@ from bx_sch_4_nbs.database.exceptions import (
     InvalidAttendanceTokenError,
     InvalidVerificationCodeError,
     ResourceDoesNotExistError,
+    ResourceInUseError,
     VerificationCodeCooldownError,
 )
 
@@ -105,7 +106,12 @@ async def handle_appointment_not_ready(
     )
 
 
+async def handle_resource_in_use(_request: Request, error: Exception) -> JSONResponse:
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"status": "KO", "detail": str(error)})
+
+
 def setup_exception_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(ResourceInUseError, handle_resource_in_use)
     app.add_exception_handler(
         DuplicateResourceError,
         handle_duplicate_resource,
