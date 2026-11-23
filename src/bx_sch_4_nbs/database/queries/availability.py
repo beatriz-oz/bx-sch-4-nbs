@@ -10,15 +10,12 @@ from bx_sch_4_nbs.database.queries import day_slots
 from bx_sch_4_nbs.database.types import NailSize
 from bx_sch_4_nbs.helpers.common import to_studio_time, to_utc, utc_now
 
-MONDAY = 0
-
 type ExceptionMap = dict[tuple[date, time | None], bool]
 
 
 def is_open_for_clients(day: date, slot_time: time, exceptions: ExceptionMap) -> bool:
-    if day.weekday() == MONDAY:
-        return False
-
+    # The weekly rule (settings.open_weekdays: Tuesday to Friday) unless the studio changed that day or slot,
+    # Mondays included: closed by default, open when she opens them.
     day_open = exceptions.get((day, None), day.weekday() in settings.open_weekdays)
     return exceptions.get((day, slot_time), day_open)
 
