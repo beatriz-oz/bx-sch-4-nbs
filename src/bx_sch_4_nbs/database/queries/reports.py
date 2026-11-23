@@ -59,6 +59,9 @@ class PeriodReport:
     booked_client_ids: set[int] = field(default_factory=set)
     booked_appointments: int = 0
     deposits_received: int = 0
+    # What the booked appointments are worth together, the deposit included (the price already counts it):
+    # the final price once completed, the estimate until then.
+    booked_value: Decimal = Decimal(0)
 
     @property
     def booked_clients(self) -> int:
@@ -142,6 +145,7 @@ def whole_year(months: list[MonthReport]) -> PeriodReport:
         year.days |= month.days
         year.booked_client_ids |= month.booked_client_ids
         year.booked_appointments += month.booked_appointments
+        year.booked_value += month.booked_value
         year.deposits_received += month.deposits_received
         for category, amount in month.expenses_by_category.items():
             year.expenses_by_category[category] = year.expenses_by_category.get(category, Decimal(0)) + amount
@@ -204,6 +208,9 @@ def year_report(session: Session, year: int) -> list[MonthReport]:
         if appointment.status in BOOKED_STATUSES:
             report.booked_appointments += 1
             report.booked_client_ids.add(appointment.user_id)
+            report.booked_value += (
+                appointment.final_price if appointment.final_price is not None else appointment.estimated_price
+            )
         if (
             appointment.deposit_paid_at is not None
             and appointment.deposit_refunded_at is None

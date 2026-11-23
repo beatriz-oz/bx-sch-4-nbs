@@ -26,6 +26,14 @@ check("marcacao: vai para a cliente", to == "ana@teste.com")
 check("marcacao: comeca pelo agradecimento", body.startswith("Thank you for booking with Nails by Scooby✨"))
 check("marcacao: dia e hora", "reserved for 25/11/2026 at 17:00." in body, body)
 check("marcacao: sinal de 10 euros", "a €10 deposit is required" in body, body)
+check(
+    "marcacao: pede o @ do Instagram na descricao",
+    "Write down your instagram @ on the transfer description." in body,
+    body,
+)
+check(
+    "marcacao: a confirmacao num paragrafo a parte", "description.\n\nThe appointment is only confirmed" in body, body
+)
 check("marcacao: sem MB Way/Revolut configurados, aponta para o Instagram", "details on Instagram" in body, body)
 check("marcacao: morada e como chegar", ADDRESS in body and "Bolhão" in body and "PR. D. João I" in body)
 check("marcacao: assinatura", body.endswith(f"{SIGN_OFF}\n\n~Scooby"), body[-40:])

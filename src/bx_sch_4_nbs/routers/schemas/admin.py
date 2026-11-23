@@ -308,6 +308,7 @@ class PeriodSummary(BaseModel):
     booked_appointments: int
     deposits_received: int
     deposits_received_amount: Decimal
+    booked_value: Decimal
 
 
 class YearTotals(PeriodSummary):

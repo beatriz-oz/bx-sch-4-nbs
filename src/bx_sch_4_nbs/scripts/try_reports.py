@@ -129,6 +129,11 @@ check(
 )
 check("agenda: 1 cliente diferente (todas da mesma)", march.get("booked_clients") == 1, march.get("booked_clients"))
 check(
+    "agenda: total 50 + 10 (precos finais) + 45 + 45 (estimados), sem canceladas nem faltas",
+    Decimal(str(march.get("booked_value"))) == Decimal(150),
+    march.get("booked_value"),
+)
+check(
     "sinais em maos: falta + cancelamento tardio + confirmada (o cedo e devido, o devolvido nao conta)",
     march.get("deposits_received") == 3 and Decimal(str(march.get("deposits_received_amount"))) == Decimal(30),
     march,

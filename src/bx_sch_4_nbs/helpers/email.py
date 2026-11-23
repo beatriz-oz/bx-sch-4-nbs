@@ -86,8 +86,10 @@ def _deposit_text() -> str:
         else "You can send it via MB Way or Revolut: @nailsbyscooby will send you the details on Instagram."
     )
     return (
-        f"To confirm your booking, a {euros} deposit is required. {how} The appointment is only confirmed after "
-        "receipt of the deposit. Upon registration and receipt of your deposit, you will receive a confirmation email."
+        f"To confirm your booking, a {euros} deposit is required. {how} "
+        "Write down your instagram @ on the transfer description.\n\n"
+        "The appointment is only confirmed after receipt of the deposit. Upon registration and receipt of your "
+        "deposit, you will receive a confirmation email."
     )
 
 

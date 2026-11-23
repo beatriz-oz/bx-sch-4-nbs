@@ -128,6 +128,12 @@ def set_name(session: Session, user: User, name: str | None, last_name: str | No
     session.flush()
 
 
+def set_instagram(session: Session, user: User, instagram: str) -> None:
+    user.instagram = instagram
+    session.add(user)
+    _flush_or_raise_duplicate(session)
+
+
 def set_agenda_emails(session: Session, user: User, wants_agenda_emails: bool) -> None:
     user.wants_agenda_emails = wants_agenda_emails
     session.add(user)

@@ -4,7 +4,7 @@ from bx_sch_4_nbs.database.exceptions import InvalidVerificationCodeError
 from bx_sch_4_nbs.database.helpers import DatabaseSession
 from bx_sch_4_nbs.database.models import User
 from bx_sch_4_nbs.database.queries import approved_list, users, verification_codes
-from bx_sch_4_nbs.database.types import VerificationPurpose
+from bx_sch_4_nbs.database.types import UserRole, VerificationPurpose
 from bx_sch_4_nbs.helpers.authentication import CurrentUser, create_access_token
 from bx_sch_4_nbs.helpers.common import mask_email, mask_phone
 from bx_sch_4_nbs.helpers.email import (
@@ -436,6 +436,11 @@ def change_phone(
     description="Update your name or your preferences (e.g. stop the 'agenda is open' emails). Clients and the studio",
 )
 def update_me(session: DatabaseSession, user: CurrentUser, data: ProfileUpdate) -> UserResponse:
+    if data.instagram is not None:
+        # The studio's own account has no Instagram here: clients only.
+        if user.role != UserRole.USER:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only clients have an Instagram in their profile.")
+        users.set_instagram(session, user, data.instagram)
     if data.name is not None or data.last_name is not None:
         users.set_name(session, user, data.name, data.last_name)
     if data.wants_agenda_emails is not None:

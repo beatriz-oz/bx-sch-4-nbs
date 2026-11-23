@@ -788,6 +788,7 @@ def period_summary(report: reports.PeriodReport) -> dict[str, Any]:
         booked_appointments=report.booked_appointments,
         deposits_received=report.deposits_received,
         deposits_received_amount=report.deposits_received_amount,
+        booked_value=report.booked_value,
     ).model_dump()
 
 

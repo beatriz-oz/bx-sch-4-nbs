@@ -64,17 +64,18 @@ class UserResult(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    """Only what is sent changes: her name, or the "agenda is open" emails."""
+    """Only what is sent changes: her name, her Instagram (clients), or the "agenda is open" emails."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
     wants_agenda_emails: bool | None = None
     name: str | None = Field(default=None, min_length=1, max_length=255)
     last_name: str | None = Field(default=None, min_length=1, max_length=255)
+    instagram: InstagramHandle | None = None
 
     @model_validator(mode="after")
     def validate_something(self) -> Self:
-        if self.wants_agenda_emails is None and self.name is None and self.last_name is None:
+        if all(value is None for value in (self.wants_agenda_emails, self.name, self.last_name, self.instagram)):
             raise ValueError("Send at least one thing to change.")
         return self
 
