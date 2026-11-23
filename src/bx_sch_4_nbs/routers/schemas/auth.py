@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from bx_sch_4_nbs.database.types import UserRole
 from bx_sch_4_nbs.routers.schemas.types import InstagramHandle, Password, PhoneNumber
@@ -12,6 +14,10 @@ class CheckInStart(BaseModel):
     last_name: str = Field(min_length=1, max_length=255)
     email: EmailStr
     phone: PhoneNumber
+
+
+class CheckInResume(BaseModel):
+    instagram: InstagramHandle
 
 
 class CheckInVerify(BaseModel):
@@ -58,7 +64,20 @@ class UserResult(BaseModel):
 
 
 class ProfileUpdate(BaseModel):
-    wants_agenda_emails: bool
+    """Only what is sent changes: her name, her Instagram (clients), or the "agenda is open" emails."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    wants_agenda_emails: bool | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    last_name: str | None = Field(default=None, min_length=1, max_length=255)
+    instagram: InstagramHandle | None = None
+
+    @model_validator(mode="after")
+    def validate_something(self) -> Self:
+        if all(value is None for value in (self.wants_agenda_emails, self.name, self.last_name, self.instagram)):
+            raise ValueError("Send at least one thing to change.")
+        return self
 
 
 class PasswordCreate(BaseModel):

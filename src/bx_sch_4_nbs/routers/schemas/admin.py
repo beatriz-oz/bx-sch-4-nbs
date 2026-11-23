@@ -271,6 +271,8 @@ class ClientOverview(ClientResult):
     visits: int
     last_visit: StudioDatetime | None
     next_appointment: StudioDatetime | None
+    # Pending and never booked: the studio may delete her (e.g. added by mistake).
+    can_delete: bool
 
 
 class ServiceReport(BaseModel):
@@ -301,6 +303,12 @@ class PeriodSummary(BaseModel):
     average_per_day: Decimal | None
     cost_per_client: Decimal | None
     profit_per_client: Decimal | None
+    # The agenda, done or not: clients booked (not cancelled, not no-shows) and deposits in hand.
+    booked_clients: int
+    booked_appointments: int
+    deposits_received: int
+    deposits_received_amount: Decimal
+    booked_value: Decimal
 
 
 class YearTotals(PeriodSummary):

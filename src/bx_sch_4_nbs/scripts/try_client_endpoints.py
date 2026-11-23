@@ -129,6 +129,37 @@ check(
     is True,
 )
 check("corpo invalido: 422", client.patch("/v1/auth/me", json={}, headers=CARLA).status_code == 422)
+response = client.patch("/v1/auth/me", json={"name": "  Carlota ", "last_name": "Sousa"}, headers=CARLA)
+check(
+    "mudar o nome: 200, sem espacos a mais",
+    response.status_code == 200
+    and response.json()["detail"]["name"] == "Carlota"
+    and response.json()["detail"]["last_name"] == "Sousa",
+    response.text[:200],
+)
+check(
+    "mudar o nome nao mexe nos emails da agenda",
+    client.get("/v1/auth/me", headers=CARLA).json()["detail"]["wants_agenda_emails"] is True,
+)
+check("nome vazio: 422", client.patch("/v1/auth/me", json={"name": "   "}, headers=CARLA).status_code == 422)
+response = client.patch("/v1/auth/me", json={"instagram": "@Carlota.Nails"}, headers=CARLA)
+check(
+    "mudar o Instagram: 200, normalizado",
+    response.status_code == 200 and response.json()["detail"]["instagram"] == "carlota.nails",
+    response.text[:200],
+)
+check(
+    "Instagram invalido: 422", client.patch("/v1/auth/me", json={"instagram": "a b"}, headers=CARLA).status_code == 422
+)
+other = User(name="Outra", last_name="Conta", instagram="outra.conta.ig")
+session.add(other)
+session.commit()
+response = client.patch("/v1/auth/me", json={"instagram": "outra.conta.ig"}, headers=CARLA)
+check("Instagram de outra conta: 409", response.status_code == 409, response.status_code)
+check(
+    "...e o dela ficou igual",
+    client.get("/v1/auth/me", headers=CARLA).json()["detail"]["instagram"] == "carlota.nails",
+)
 
 transaction.rollback()
 connection.close()

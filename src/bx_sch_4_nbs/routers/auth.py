@@ -4,7 +4,7 @@ from bx_sch_4_nbs.database.exceptions import InvalidVerificationCodeError
 from bx_sch_4_nbs.database.helpers import DatabaseSession
 from bx_sch_4_nbs.database.models import User
 from bx_sch_4_nbs.database.queries import approved_list, users, verification_codes
-from bx_sch_4_nbs.database.types import VerificationPurpose
+from bx_sch_4_nbs.database.types import UserRole, VerificationPurpose
 from bx_sch_4_nbs.helpers.authentication import CurrentUser, create_access_token
 from bx_sch_4_nbs.helpers.common import mask_email, mask_phone
 from bx_sch_4_nbs.helpers.email import (
@@ -29,6 +29,7 @@ from bx_sch_4_nbs.helpers.security import (
 from bx_sch_4_nbs.routers.schemas.auth import (
     ActivationConfirm,
     ActivationStart,
+    CheckInResume,
     CheckInStart,
     CheckInVerify,
     CodeSent,
@@ -108,7 +109,8 @@ def check_in_start(session: DatabaseSession, data: CheckInStart, background_task
 )
 def check_in_verify(session: DatabaseSession, data: CheckInVerify) -> TokenResponse:
     user = users.get_user_by_instagram(session, data.instagram)
-    if user is None or user.is_active or user.email_verified:
+    # A first check-in (email not confirmed yet), or an approved client continuing her activation.
+    if user is None or user.is_active or (user.email_verified and not can_resume_activation(user)):
         raise InvalidVerificationCodeError("Invalid or expired code. Please request a new one.")
 
     verification_codes.verify_code(session, user, VerificationPurpose.CHECKIN, data.code)
@@ -116,6 +118,42 @@ def check_in_verify(session: DatabaseSession, data: CheckInVerify) -> TokenRespo
     session.add(user)
 
     return token_response(user)
+
+
+def can_resume_activation(user: User) -> bool:
+    """An approved client who checked in but has no password yet (e.g. she closed the window)."""
+    return not user.is_active and user.email_verified and user.approved_at is not None and bool(user.email_encrypted)
+
+
+# The same answer for an unknown handle and for any account with nothing to continue.
+NOTHING_TO_RESUME = (
+    "There is no activation to continue for this Instagram. Fill in the form for your first appointment."
+)
+
+
+@router.post(
+    "/checkin/resume",
+    description=(
+        "Continue the activation of an approved client who already checked in but did not create her password: "
+        "a new code goes to the email she gave. Then /checkin/verify and /me/activate, as after a first check-in."
+    ),
+    responses={
+        status.HTTP_409_CONFLICT: {"description": "Nothing to continue for this handle"},
+        status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Code requested too recently"},
+    },
+)
+def check_in_resume(
+    session: DatabaseSession, data: CheckInResume, background_tasks: BackgroundTasks
+) -> CodeSentResponse:
+    user = users.get_user_by_instagram(session, data.instagram)
+    if user is None or not can_resume_activation(user):
+        raise HTTPException(status.HTTP_409_CONFLICT, NOTHING_TO_RESUME)
+
+    code = verification_codes.issue_code(session, user, VerificationPurpose.CHECKIN)
+    email = required_email(user.email_encrypted)
+    background_tasks.add_task(send_verification_code, email, code)
+
+    return CodeSentResponse(status="OK", detail=CodeSent(sent_to=mask_email(email)))
 
 
 @router.post(
@@ -393,7 +431,18 @@ def change_phone(
     return UserResponse(status="OK", detail=user_result(user))
 
 
-@router.patch("/me", description="Update your preferences (e.g. stop the 'agenda is open' emails)")
+@router.patch(
+    "/me",
+    description="Update your name or your preferences (e.g. stop the 'agenda is open' emails). Clients and the studio",
+)
 def update_me(session: DatabaseSession, user: CurrentUser, data: ProfileUpdate) -> UserResponse:
-    users.set_agenda_emails(session, user, data.wants_agenda_emails)
+    if data.instagram is not None:
+        # The studio's own account has no Instagram here: clients only.
+        if user.role != UserRole.USER:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Only clients have an Instagram in their profile.")
+        users.set_instagram(session, user, data.instagram)
+    if data.name is not None or data.last_name is not None:
+        users.set_name(session, user, data.name, data.last_name)
+    if data.wants_agenda_emails is not None:
+        users.set_agenda_emails(session, user, data.wants_agenda_emails)
     return UserResponse(status="OK", detail=user_result(user))

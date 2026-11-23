@@ -10,6 +10,7 @@ from bx_sch_4_nbs.helpers.authentication import CurrentUser, read_attendance_tok
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
 from bx_sch_4_nbs.helpers.email import (
     booking_details,
+    send_booking_received,
     send_cancelled_appointment_notification,
     send_cancelled_appointment_notification_client,
     send_changed_by_client_notification,
@@ -190,6 +191,12 @@ def create_new_appointment(
         policies_accepted_at=utc_now(),
     )
 
+    # To her: the booking is reserved, and how to pay the deposit.
+    background_tasks.add_task(
+        send_booking_received,
+        required_email(user.email_encrypted),
+        to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
+    )
     background_tasks.add_task(
         send_new_appointment_notification,
         settings.studio_notification_email,
