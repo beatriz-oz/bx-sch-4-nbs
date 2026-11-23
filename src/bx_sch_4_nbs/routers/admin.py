@@ -35,7 +35,7 @@ from bx_sch_4_nbs.helpers.email import (
     send_changed_by_studio_notification,
     send_deposit_confirmation,
 )
-from bx_sch_4_nbs.helpers.security import decrypt_email, decrypt_phone
+from bx_sch_4_nbs.helpers.security import email_or_none, phone_or_none
 from bx_sch_4_nbs.routers.schemas.admin import (
     AdminAppointmentResult,
     AdminPayments,
@@ -88,6 +88,7 @@ from bx_sch_4_nbs.routers.schemas.responses import (
     ExpenseResponse,
     FinalPriceEstimateResponse,
     MessageResponse,
+    MonthNotifiedResponse,
     MonthPublishedResponse,
     NailArtPriceResponse,
     PolicyResponse,
@@ -104,8 +105,8 @@ from bx_sch_4_nbs.routers.schemas.schedule import (
     AgendaMonth,
     AgendaSlotResult,
     DaySlotsSet,
+    MonthNotified,
     MonthPublish,
-    MonthPublished,
     PublishedMonthResult,
     ScheduleExceptionResult,
     ScheduleExceptionSet,
@@ -130,15 +131,34 @@ def get_pre_approved_instagrams(
 
 @router.post(
     "/pre-approved-instagrams",
-    description="Pre-approve an Instagram handle for a first-time booking",
+    description=(
+        "Pre-approve an Instagram handle for a first-time booking. With `client` (a regular client), "
+        "her account is created at once and approved: the studio can book for her, and she only creates a password"
+    ),
     status_code=status.HTTP_201_CREATED,
-    responses={status.HTTP_409_CONFLICT: {"description": "Handle already pre-approved"}},
+    responses={status.HTTP_409_CONFLICT: {"description": "Handle already pre-approved, or the client already exists"}},
 )
 def add_pre_approved_instagram(
     session: DatabaseSession, new_entry: NewPreApprovedInstagram
 ) -> PreApprovedInstagramResponse:
     entry = queries.create_pre_approved_instagram(session, new_entry.instagram)
-    return PreApprovedInstagramResponse(status="OK", detail=PreApprovedInstagramResult.model_validate(entry))
+    result = PreApprovedInstagramResult.model_validate(entry)
+
+    if new_entry.client is not None:
+        client = users.create_first_time_user(
+            session,
+            instagram=new_entry.instagram,
+            name=new_entry.client.name,
+            last_name=new_entry.client.last_name,
+            email=new_entry.client.email,
+            phone=new_entry.client.phone,
+        )
+        if client.id is None:
+            raise RuntimeError("Client without id.")
+        admin.set_client_approval(session, client.id, True, utc_now())
+        result.client_id = client.id
+
+    return PreApprovedInstagramResponse(status="OK", detail=result)
 
 
 @router.delete(
@@ -250,29 +270,35 @@ def get_published_months(session: DatabaseSession) -> PublishedMonthListResponse
 
 @router.post(
     "/published-months",
-    description="Publish a month's agenda and notify the regular clients by email",
+    description="Publish a month's agenda: clients can book it. No email: the studio sends it with /notify",
     status_code=status.HTTP_201_CREATED,
     responses={status.HTTP_409_CONFLICT: {"description": "Month already published"}},
 )
-def publish_month(
-    session: DatabaseSession, data: MonthPublish, background_tasks: BackgroundTasks
-) -> MonthPublishedResponse:
+def publish_month(session: DatabaseSession, data: MonthPublish) -> MonthPublishedResponse:
     entry = published_months.publish_month(session, data.year, data.month)
+    return MonthPublishedResponse(status="OK", detail=PublishedMonthResult.model_validate(entry))
 
-    if entry.published_at is None:
-        raise RuntimeError("published_at should have been set by the database.")
 
-    recipients = [decrypt_email(user.email_encrypted) for user in users.list_agenda_subscribers(session)]
-    background_tasks.add_task(send_agenda_published, recipients, data.year, data.month)
+@router.post(
+    "/published-months/{year}/{month}/notify",
+    description="Email the regular clients (who want it) that this month is open. Can be sent again",
+    responses={status.HTTP_404_NOT_FOUND: {"description": "Month not published"}},
+)
+def notify_month(
+    session: DatabaseSession, year: int, month: int, background_tasks: BackgroundTasks
+) -> MonthNotifiedResponse:
+    entry = published_months.get_published_month(session, year, month)
+    if entry is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Publish the month before telling the clients.")
 
-    return MonthPublishedResponse(
-        status="OK",
-        detail=MonthPublished(
-            year=entry.year,
-            month=entry.month,
-            published_at=entry.published_at,
-            notified_clients=len(recipients),
-        ),
+    now = utc_now()
+    subscribers = users.list_agenda_subscribers(session)
+    recipients = [email for user in subscribers if (email := email_or_none(user.email_encrypted))]
+    background_tasks.add_task(send_agenda_published, recipients, year, month)
+    published_months.mark_notified(session, entry, now)
+
+    return MonthNotifiedResponse(
+        status="OK", detail=MonthNotified(year=year, month=month, notified_at=now, notified_clients=len(recipients))
     )
 
 
@@ -296,6 +322,7 @@ def get_agenda(
             year=year,
             month=month,
             published_at=published.published_at if published else None,
+            notified_at=published.notified_at if published else None,
             days=[
                 AgendaDay(
                     day=day,
@@ -404,10 +431,11 @@ def confirm_deposit(
     now = utc_now()
     appointment, user, is_confirmed = admin.confirm_deposit(session, appointment_id, now)
 
-    if is_confirmed:
+    email = email_or_none(user.email_encrypted)
+    if is_confirmed and email:
         background_tasks.add_task(
             send_deposit_confirmation,
-            decrypt_email(user.email_encrypted),
+            email,
             to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
         )
 
@@ -436,13 +464,14 @@ def cancel_appointment(
     appointment, user = cancel_appointment_by_studio(session, appointment_id, admin.id, now)
     is_deposit_paid = appointment.deposit_paid_at is not None
 
-    background_tasks.add_task(
-        send_cancelled_by_studio_notification,
-        decrypt_email(user.email_encrypted),
-        to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
-        is_deposit_paid,
-        data.message if data else None,
-    )
+    if email := email_or_none(user.email_encrypted):
+        background_tasks.add_task(
+            send_cancelled_by_studio_notification,
+            email,
+            to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
+            is_deposit_paid,
+            data.message if data else None,
+        )
 
     return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, user, now))
 
@@ -516,8 +545,8 @@ def search_clients(
                 name=user.name,
                 last_name=user.last_name,
                 instagram=user.instagram,
-                email=decrypt_email(user.email_encrypted),
-                phone=decrypt_phone(user.phone_encrypted),
+                email=email_or_none(user.email_encrypted),
+                phone=phone_or_none(user.phone_encrypted),
                 is_active=user.is_active,
             )
         )
@@ -582,10 +611,12 @@ def book_appointment(
     )
 
     # Squeeze-ins and past bookings get no email: the manicure has just talked to the client.
-    if not admin.is_within_reminder_window(appointment.scheduled_at, now):
+    # Nor does a regular client without an email yet: the studio tells her on Instagram.
+    email = email_or_none(client.email_encrypted)
+    if email and not admin.is_within_reminder_window(appointment.scheduled_at, now):
         background_tasks.add_task(
             send_booked_by_studio_notification,
-            decrypt_email(client.email_encrypted),
+            email,
             to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
             booking_details(appointment),
             is_deposit_required(appointment.service),
@@ -649,8 +680,8 @@ def client_overview(
         name=user.name,
         last_name=user.last_name,
         instagram=user.instagram,
-        email=decrypt_email(user.email_encrypted),
-        phone=decrypt_phone(user.phone_encrypted),
+        email=email_or_none(user.email_encrypted),
+        phone=phone_or_none(user.phone_encrypted),
         is_active=user.is_active,
         email_verified=user.email_verified,
         approved=user.approved_at is not None,
@@ -881,10 +912,11 @@ def change_appointment(
     client = admin.get_client(session, appointment.user_id)
 
     # As when booking: a move into the next hours was just agreed with the client, no email needed.
-    if changed.time_changed and not admin.is_within_reminder_window(appointment.scheduled_at, now):
+    email = email_or_none(client.email_encrypted)
+    if email and changed.time_changed and not admin.is_within_reminder_window(appointment.scheduled_at, now):
         background_tasks.add_task(
             send_changed_by_studio_notification,
-            decrypt_email(client.email_encrypted),
+            email,
             to_studio_time(changed.previous_scheduled_at).strftime("%d/%m/%Y %H:%M"),
             to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M"),
             booking_details(appointment),
