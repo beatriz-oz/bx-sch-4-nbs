@@ -42,30 +42,25 @@ def create_first_time_user(
     instagram: str | None,
     name: str,
     last_name: str,
-    email: str,
-    phone: str,
+    email: str | None,
+    phone: str | None,
 ) -> User:
-    user = User(
-        instagram=instagram,
-        name=name,
-        last_name=last_name,
-        email_encrypted="",
-        email_hash="",
-        phone_encrypted="",
-        phone_hash="",
-    )
+    """Email and phone may be missing only for a regular client the studio creates from her Instagram."""
+    user = User(instagram=instagram, name=name, last_name=last_name)
     session.add(user)
     update_unverified_user(session, user, name=name, last_name=last_name, email=email, phone=phone)
     return user
 
 
-def update_unverified_user(session: Session, user: User, *, name: str, last_name: str, email: str, phone: str) -> None:
+def update_unverified_user(
+    session: Session, user: User, *, name: str, last_name: str, email: str | None, phone: str | None
+) -> None:
     user.name = name
     user.last_name = last_name
-    user.email_encrypted = encrypt_email(email)
-    user.email_hash = hash_email(email)
-    user.phone_encrypted = encrypt_phone(phone)
-    user.phone_hash = hash_phone(phone)
+    user.email_encrypted = encrypt_email(email) if email else None
+    user.email_hash = hash_email(email) if email else None
+    user.phone_encrypted = encrypt_phone(phone) if phone else None
+    user.phone_hash = hash_phone(phone) if phone else None
     session.add(user)
     _flush_or_raise_duplicate(session)
 

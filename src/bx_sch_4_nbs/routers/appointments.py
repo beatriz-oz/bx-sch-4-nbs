@@ -15,7 +15,7 @@ from bx_sch_4_nbs.helpers.email import (
     send_changed_by_client_notification,
     send_new_appointment_notification,
 )
-from bx_sch_4_nbs.helpers.security import decrypt_email
+from bx_sch_4_nbs.helpers.security import required_email
 from bx_sch_4_nbs.routers.schemas.appointments import (
     AppointmentDetails,
     AppointmentResult,
@@ -111,7 +111,7 @@ def cancel_appointment(
 
     background_tasks.add_task(
         send_cancelled_appointment_notification_client,
-        decrypt_email(user.email_encrypted),
+        required_email(user.email_encrypted),
         when,
         deposit_paid,
         refund_due,

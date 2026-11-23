@@ -48,8 +48,8 @@ class UserResult(BaseModel):
     name: str
     last_name: str
     instagram: str | None
-    email: str
-    phone: str
+    email: str | None
+    phone: str | None
     role: UserRole
     is_active: bool
     email_verified: bool
@@ -59,6 +59,10 @@ class UserResult(BaseModel):
 
 class ProfileUpdate(BaseModel):
     wants_agenda_emails: bool
+
+
+class PasswordCreate(BaseModel):
+    password: Password
 
 
 class PasswordChange(BaseModel):

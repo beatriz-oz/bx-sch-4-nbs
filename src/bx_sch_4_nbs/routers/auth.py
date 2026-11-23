@@ -17,11 +17,13 @@ from bx_sch_4_nbs.helpers.email import (
 )
 from bx_sch_4_nbs.helpers.security import (
     decrypt_email,
-    decrypt_phone,
+    email_or_none,
     encrypt_email,
     hash_email,
     hash_phone,
     normalize_email,
+    phone_or_none,
+    required_email,
     verify_password,
 )
 from bx_sch_4_nbs.routers.schemas.auth import (
@@ -34,6 +36,7 @@ from bx_sch_4_nbs.routers.schemas.auth import (
     EmailChangeStart,
     Login,
     PasswordChange,
+    PasswordCreate,
     PasswordResetConfirm,
     PasswordResetStart,
     PhoneChange,
@@ -92,7 +95,7 @@ def check_in_start(session: DatabaseSession, data: CheckInStart, background_task
         users.update_unverified_user(session, user, **personal_data)
 
     code = verification_codes.issue_code(session, user, VerificationPurpose.CHECKIN)
-    email = decrypt_email(user.email_encrypted)
+    email = required_email(user.email_encrypted)
     background_tasks.add_task(send_verification_code, email, code)
 
     return CodeSentResponse(status="OK", detail=CodeSent(sent_to=mask_email(email)))
@@ -144,7 +147,7 @@ def activation_start(
         )
 
     code = verification_codes.issue_code(session, user, VerificationPurpose.ACTIVATION)
-    email = decrypt_email(user.email_encrypted)
+    email = required_email(user.email_encrypted)
     background_tasks.add_task(send_verification_code, email, code)
 
     return CodeSentResponse(status="OK", detail=CodeSent(sent_to=mask_email(email)))
@@ -214,7 +217,7 @@ def password_reset_start(
     # Without a password there is nothing to reset: that client creates one in the activation instead.
     if user is not None and user.is_active:
         code = verification_codes.issue_code(session, user, VerificationPurpose.PASSWORD_RESET)
-        background_tasks.add_task(send_password_reset_code, decrypt_email(user.email_encrypted), code)
+        background_tasks.add_task(send_password_reset_code, required_email(user.email_encrypted), code)
 
     return MessageResponse(status="OK", detail=RESET_CODE_SENT)
 
@@ -233,7 +236,7 @@ def password_reset_confirm(
 
     verification_codes.verify_code(session, user, VerificationPurpose.PASSWORD_RESET, data.code)
     users.set_password(session, user, data.password)
-    background_tasks.add_task(send_password_changed, decrypt_email(user.email_encrypted))
+    background_tasks.add_task(send_password_changed, required_email(user.email_encrypted))
 
     return token_response(user)
 
@@ -251,8 +254,8 @@ def user_result(user: User) -> UserResult:
         name=user.name,
         last_name=user.last_name,
         instagram=user.instagram,
-        email=decrypt_email(user.email_encrypted),
-        phone=decrypt_phone(user.phone_encrypted),
+        email=email_or_none(user.email_encrypted),
+        phone=phone_or_none(user.phone_encrypted),
         role=user.role,
         is_active=user.is_active,
         email_verified=user.email_verified,
@@ -264,6 +267,30 @@ def user_result(user: User) -> UserResult:
 @router.get("/me", description="Data of the logged-in user")
 def me(user: CurrentUser) -> UserResponse:
     return UserResponse(status="OK", detail=user_result(user))
+
+
+@router.post(
+    "/me/activate",
+    description=(
+        "An approved client who has just checked in creates her password at once: the check-in code "
+        "already proved her email. Logs out other devices; the answer has a new token."
+    ),
+    responses={
+        status.HTTP_403_FORBIDDEN: {"description": "Not approved by the studio, or email not confirmed"},
+        status.HTTP_409_CONFLICT: {"description": "Account already active"},
+    },
+)
+def activate_me(session: DatabaseSession, user: CurrentUser, data: PasswordCreate) -> TokenResponse:
+    if user.is_active:
+        raise HTTPException(status.HTTP_409_CONFLICT, "This account is already active.")
+    if user.approved_at is None or not user.email_verified:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Creating a password needs the studio's approval. Contact @nailsbyscooby on Instagram.",
+        )
+
+    users.activate_user(session, user, data.password)
+    return token_response(user)
 
 
 def check_current_password(user: User, current_password: str) -> None:
@@ -292,7 +319,7 @@ def change_password(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "The new password must be different from the current one.")
 
     users.set_password(session, user, data.new_password)
-    background_tasks.add_task(send_password_changed, decrypt_email(user.email_encrypted))
+    background_tasks.add_task(send_password_changed, required_email(user.email_encrypted))
 
     return token_response(user)
 
@@ -337,7 +364,7 @@ def email_change_confirm(
     if pending is None:
         raise InvalidVerificationCodeError("Invalid or expired code. Please request a new one.")
 
-    old_email = decrypt_email(user.email_encrypted)
+    old_email = required_email(user.email_encrypted)
     new_email = decrypt_email(pending)
     users.set_email(session, user, new_email)
     background_tasks.add_task(send_email_changed, old_email, mask_email(new_email))
@@ -361,7 +388,7 @@ def change_phone(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "This is already your phone number.")
 
     users.set_phone(session, user, data.new_phone)
-    background_tasks.add_task(send_phone_changed, decrypt_email(user.email_encrypted), mask_phone(data.new_phone))
+    background_tasks.add_task(send_phone_changed, required_email(user.email_encrypted), mask_phone(data.new_phone))
 
     return UserResponse(status="OK", detail=user_result(user))
 

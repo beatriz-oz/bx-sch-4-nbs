@@ -29,10 +29,25 @@ class PreApprovedInstagramResult(BaseModel):
     id: int
     instagram: str
     created_at: StudioDatetime
+    # The account created with it (a regular client), if any.
+    client_id: int | None = None
+
+
+class PreApprovedClient(BaseModel):
+    """A regular client: her account is created at once, approved, so the studio can book for her.
+    Often only her name is known: she gives her email and phone at her check-in (with her Instagram)."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=255)
+    last_name: str = Field(default="", max_length=255)
+    email: EmailStr | None = None
+    phone: PhoneNumber | None = None
 
 
 class NewPreApprovedInstagram(BaseModel):
     instagram: InstagramHandle
+    client: PreApprovedClient | None = None
 
 
 class NewPolicy(BaseModel):
@@ -238,8 +253,8 @@ class ClientResult(BaseModel):
     name: str
     last_name: str
     instagram: str | None
-    email: str
-    phone: str
+    email: str | None
+    phone: str | None
     is_active: bool
 
 
