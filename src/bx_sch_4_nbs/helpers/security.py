@@ -41,6 +41,18 @@ def decrypt_email(encrypted_email: str) -> str:
     return _decrypt(encrypted_email)
 
 
+def email_or_none(encrypted_email: str | None) -> str | None:
+    """The email, or None for a client who has not given it yet (see User.email_encrypted)."""
+    return _decrypt(encrypted_email) if encrypted_email else None
+
+
+def required_email(encrypted_email: str | None) -> str:
+    """For accounts that always have an email (active clients, the studio, a client who just checked in)."""
+    if not encrypted_email:
+        raise RuntimeError("This account has no email.")
+    return _decrypt(encrypted_email)
+
+
 def normalize_phone(phone: str) -> str:
     try:
         parsed = phonenumbers.parse(phone, None)
@@ -63,6 +75,10 @@ def encrypt_phone(phone: str) -> str:
 
 def decrypt_phone(encrypted_phone: str) -> str:
     return _decrypt(encrypted_phone)
+
+
+def phone_or_none(encrypted_phone: str | None) -> str | None:
+    return _decrypt(encrypted_phone) if encrypted_phone else None
 
 
 def hash_password(password: str) -> str:

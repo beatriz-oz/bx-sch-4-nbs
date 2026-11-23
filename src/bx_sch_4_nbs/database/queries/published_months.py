@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, select
 
@@ -28,3 +30,9 @@ def publish_month(session: Session, year: int, month: int) -> PublishedMonth:
 
 def get_published_month(session: Session, year: int, month: int) -> PublishedMonth | None:
     return session.get(PublishedMonth, (year, month))
+
+
+def mark_notified(session: Session, entry: PublishedMonth, now: datetime) -> None:
+    entry.notified_at = now
+    session.add(entry)
+    session.flush()

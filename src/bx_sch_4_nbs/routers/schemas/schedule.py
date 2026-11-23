@@ -50,9 +50,13 @@ class PublishedMonthResult(BaseModel):
     year: int
     month: int
     published_at: StudioDatetime
+    notified_at: StudioDatetime | None = None
 
 
-class MonthPublished(PublishedMonthResult):
+class MonthNotified(BaseModel):
+    year: int
+    month: int
+    notified_at: StudioDatetime
     notified_clients: int
 
 
@@ -74,6 +78,7 @@ class AgendaMonth(BaseModel):
     year: int
     month: int
     published_at: StudioDatetime | None
+    notified_at: StudioDatetime | None
     days: list[AgendaDay]
 
 

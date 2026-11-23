@@ -35,17 +35,25 @@ class User(SQLModel, table=True):
     )
     name: str = Field(description="First name", max_length=255, nullable=False)
     last_name: str = Field(description="Last name", max_length=255, nullable=False)
-    email_encrypted: str = Field(description="Email encrypted with Fernet", max_length=512, nullable=False)
-    email_hash: str = Field(
+    # Email and phone are empty only for a regular client the studio created from her Instagram:
+    # she fills them in at her check-in. Until then she gets no emails.
+    email_encrypted: str | None = Field(
+        default=None, description="Email encrypted with Fernet", max_length=512, nullable=True
+    )
+    email_hash: str | None = Field(
+        default=None,
         description="Deterministic hash of the email, used for lookup",
         max_length=64,
-        nullable=False,
+        nullable=True,
     )
-    phone_encrypted: str = Field(description="Phone encrypted with Fernet", max_length=512, nullable=False)
-    phone_hash: str = Field(
+    phone_encrypted: str | None = Field(
+        default=None, description="Phone encrypted with Fernet", max_length=512, nullable=True
+    )
+    phone_hash: str | None = Field(
+        default=None,
         description="Deterministic hash of the phone, used for lookup",
         max_length=64,
-        nullable=False,
+        nullable=True,
     )
     role: UserRole = Field(description="User or super admin", default=UserRole.USER, nullable=False)
     password_hash: str | None = Field(
@@ -296,6 +304,8 @@ class PublishedMonth(SQLModel, table=True):
         default=None,
         sa_column=Column(DateTime, nullable=False, server_default=func.current_timestamp()),
     )
+    # When the studio last emailed the regular clients that this month is open (she chooses when).
+    notified_at: datetime | None = Field(default=None, nullable=True)
 
 
 class Expense(SQLModel, table=True):

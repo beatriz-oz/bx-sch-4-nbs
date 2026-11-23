@@ -12,7 +12,7 @@ from bx_sch_4_nbs.database.queries.schedule import (
 from bx_sch_4_nbs.helpers.authentication import create_attendance_token
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
 from bx_sch_4_nbs.helpers.email import send_attendance_reminder
-from bx_sch_4_nbs.helpers.security import decrypt_email
+from bx_sch_4_nbs.helpers.security import email_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,11 @@ def process_reminders(session: Session, now: datetime) -> int:
         appointment_date = to_studio_time(appointment.scheduled_at).strftime("%d/%m/%Y %H:%M")
         # Confirming is optional: the link works until the appointment starts.
         token = create_attendance_token(appointment.id, appointment.scheduled_at)
-        email_client = decrypt_email(client.email_encrypted)
+        email_client = email_or_none(client.email_encrypted)
+        if email_client is None:
+            # A regular client without an email yet: not marked as sent, so it still goes out
+            # if she checks in before the appointment.
+            continue
 
         email_sent = send_attendance_reminder(email_client, appointment_date, token)
 
