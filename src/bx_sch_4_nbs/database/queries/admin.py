@@ -13,8 +13,8 @@ from bx_sch_4_nbs.database.exceptions import (
     ResourceDoesNotExistError,
     ResourceInUseError,
 )
-from bx_sch_4_nbs.database.models import Appointment, User
-from bx_sch_4_nbs.database.queries import changes, prices, schedule
+from bx_sch_4_nbs.database.models import Appointment, PreApprovedInstagram, User
+from bx_sch_4_nbs.database.queries import approved_list, changes, prices, schedule, users
 from bx_sch_4_nbs.database.types import (
     STUDIO_ONLY_SERVICES,
     AppointmentStatus,
@@ -426,6 +426,34 @@ def delete_pending_client(session: Session, user_id: int) -> None:
         )
     session.delete(user)
     session.flush()
+
+
+def change_pre_approved_instagram(
+    session: Session, entry_id: int, instagram: str
+) -> tuple[PreApprovedInstagram, User | None]:
+    """Fixes a pre-approved handle. The account created with it (a regular client), if any, follows."""
+    entry = session.get(PreApprovedInstagram, entry_id)
+    if entry is None:
+        raise ResourceDoesNotExistError(f"Pre-approved Instagram {entry_id} does not exist.")
+    client = users.get_user_by_instagram(session, entry.instagram)
+    if instagram != entry.instagram:
+        approved_list.rename(session, entry, instagram)
+        if client is not None and client.role == UserRole.USER:
+            users.set_instagram(session, client, instagram)
+    return entry, client if client is not None and client.role == UserRole.USER else None
+
+
+def change_client_instagram(session: Session, user_id: int, instagram: str) -> User:
+    """The studio fixes a client's handle. Her entry in the pre-approved list, if any, follows."""
+    user = get_client(session, user_id)
+    previous = user.instagram
+    if instagram == previous:
+        return user
+    entry = approved_list.get_by_instagram(session, previous) if previous else None
+    users.set_instagram(session, user, instagram)
+    if entry is not None and approved_list.get_by_instagram(session, instagram) is None:
+        approved_list.rename(session, entry, instagram)
+    return user
 
 
 def set_client_approval(session: Session, user_id: int, approved: bool, now: datetime) -> User:
