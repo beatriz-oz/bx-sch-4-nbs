@@ -13,7 +13,7 @@ from bx_sch_4_nbs.database.queries.schedule import list_appointments
 from bx_sch_4_nbs.database.types import AppointmentStatus, UserRole
 from bx_sch_4_nbs.helpers.authentication import create_access_token
 from bx_sch_4_nbs.helpers.common import to_studio_time, utc_now
-from bx_sch_4_nbs.helpers.export import received
+from bx_sch_4_nbs.helpers.export import MONTHS, months_between, received
 from bx_sch_4_nbs.main import app
 
 connection = engine.connect()
@@ -114,6 +114,47 @@ check("English file name", "appointments_" in r.headers["content-disposition"], 
 r = client.get(URL, headers=ADMIN, params={"start_date": "2099-01-01", "end_date": "2099-01-31"})
 empty = load_workbook(BytesIO(r.content)).active
 check("empty period -> header and total only", r.status_code == 200 and empty is not None and empty.max_row <= 3)
+
+# --- One sheet per month ---
+r = client.get(URL, headers=ADMIN, params={"start_date": start, "end_date": end, "by_month": True})
+book = load_workbook(BytesIO(r.content))
+expected_months = months_between(start, end)
+check("by month -> 200", r.status_code == 200, r.text[:200])
+check(
+    "one sheet per month of the period, in order, named like 'Novembro 2026'",
+    book.sheetnames == [f"{MONTHS['pt'][month - 1]} {year}" for year, month in expected_months],
+    book.sheetnames,
+)
+per_sheet = {
+    name: [row for row in book[name].iter_rows(min_row=2, values_only=True) if isinstance(row[0], datetime | date)]
+    for name in book.sheetnames
+}
+check("every appointment is in one sheet", sum(len(rows) for rows in per_sheet.values()) == len(expected_rows))
+check(
+    "each sheet only has its own month",
+    all(
+        all((row[0].year, row[0].month) == expected_months[index] for row in per_sheet[name])
+        for index, name in enumerate(book.sheetnames)
+    ),
+)
+check(
+    "each sheet has its header and its total",
+    all(
+        [c.value for c in book[name][1]][:3] == ["Data", "Hora", "Cliente"]
+        and any(row[0] == "Total" for row in book[name].iter_rows(values_only=True))
+        for name in book.sheetnames
+    ),
+)
+r = client.get(
+    URL,
+    headers=ADMIN,
+    params={"start_date": "2099-01-15", "end_date": "2099-03-02", "by_month": True, "language": "en"},
+)
+check(
+    "empty months still get their sheet (English names)",
+    load_workbook(BytesIO(r.content)).sheetnames == ["January 2099", "February 2099", "March 2099"],
+)
+check("across a new year", months_between(date(2026, 11, 20), date(2027, 1, 5)) == [(2026, 11), (2026, 12), (2027, 1)])
 
 session.close()
 transaction.rollback()

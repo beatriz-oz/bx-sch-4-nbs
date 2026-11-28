@@ -414,7 +414,8 @@ XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     "/appointments/export",
     description=(
         "Every appointment of a period (Lisbon dates) as an Excel file, to open in Google Sheets: "
-        "prices, deposit, what was received and a total. Up to 2 years at a time"
+        "prices, deposit, what was received and a total. Up to 2 years at a time. "
+        "With by_month, each month of the period comes in its own sheet"
     ),
     response_class=Response,
     responses={
@@ -427,6 +428,7 @@ def export_appointments(
     start_date: date,
     end_date: date,
     language: Literal["pt", "en"] = "pt",
+    by_month: bool = False,
 ) -> Response:
     if end_date < start_date:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "The end date must be after the start date.")
@@ -434,7 +436,8 @@ def export_appointments(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Export up to 2 years at a time.")
 
     rows = list_appointments(session, start_date, end_date)
-    content = export.appointments_workbook(rows, language, settings.deposit_amount)
+    months = export.months_between(start_date, end_date) if by_month else None
+    content = export.appointments_workbook(rows, language, settings.deposit_amount, months)
     filename = export.export_filename(start_date, end_date, language)
     return Response(
         content=content,
