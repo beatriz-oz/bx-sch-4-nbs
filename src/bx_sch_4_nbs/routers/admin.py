@@ -7,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 
 from bx_sch_4_nbs.config import settings
 from bx_sch_4_nbs.database.helpers import DatabaseSession
-from bx_sch_4_nbs.database.models import Appointment, User
+from bx_sch_4_nbs.database.models import Appointment, BookedSlot, User
 from bx_sch_4_nbs.database.queries import (
     admin,
     availability,
@@ -46,6 +46,7 @@ from bx_sch_4_nbs.routers.schemas.admin import (
     ClientOverview,
     ClientProfile,
     ClientResult,
+    CompletedAppointmentDetails,
     ExpenseResult,
     ExpenseSet,
     FinalPriceDetails,
@@ -334,6 +335,7 @@ def get_agenda(
 ) -> AgendaMonthResponse:
     published = published_months.get_published_month(session, year, month)
     agenda = availability.month_agenda(session, year, month)
+    booked_clients, booked_appointments = reports.month_bookings(session, year, month)
     return AgendaMonthResponse(
         status="OK",
         detail=AgendaMonth(
@@ -349,6 +351,8 @@ def get_agenda(
                 )
                 for day, info in agenda.items()
             ],
+            booked_clients=booked_clients,
+            booked_appointments=booked_appointments,
         ),
     )
 
@@ -571,6 +575,51 @@ def search_clients(
     return ClientListResponse(status="OK", detail=results)
 
 
+def refuse_unconfirmed_overlap(
+    session: DatabaseSession, data: StudioAppointmentDetails, exclude: Appointment | None = None
+) -> None:
+    """
+    The studio may book over another appointment (e.g. two clients at once), but only after
+    seeing which ones: without confirm_overlap, a 409 lists them so the site can ask her.
+    """
+    if data.confirm_overlap:
+        return
+    taken = session.get(BookedSlot, data.scheduled_at)
+    if taken is not None and (exclude is None or taken.appointment_id != exclude.id):
+        # The exact time is taken: that is refused anyway, as already booked.
+        return
+    minutes = data.duration_minutes or settings.service_durations_minutes[data.service]
+    if (
+        exclude is not None
+        and exclude.scheduled_at == data.scheduled_at
+        and minutes <= schedule.duration_minutes(exclude)
+    ):
+        # Same time and not longer than before: nothing new overlaps (e.g. only the notes changed).
+        return
+    overlapping = availability.overlapping_appointments(
+        session, data.scheduled_at, minutes, exclude_id=exclude.id if exclude else None
+    )
+    if not overlapping:
+        return
+    raise HTTPException(
+        status.HTTP_409_CONFLICT,
+        {
+            "code": "overlap",
+            "message": "This time overlaps other appointments.",
+            "appointments": [
+                {
+                    "id": appointment.id,
+                    "time": to_studio_time(appointment.scheduled_at).strftime("%H:%M"),
+                    "end": to_studio_time(availability.appointment_end(appointment)).strftime("%H:%M"),
+                    "client": admin.get_client(session, appointment.user_id).name,
+                    "service": appointment.service.value,
+                }
+                for appointment in overlapping
+            ],
+        },
+    )
+
+
 @router.post(
     "/appointments",
     description=(
@@ -580,7 +629,12 @@ def search_clients(
     status_code=status.HTTP_201_CREATED,
     responses={
         status.HTTP_404_NOT_FOUND: {"description": "Client does not exist"},
-        status.HTTP_409_CONFLICT: {"description": "Time already booked, client already registered, or no policy"},
+        status.HTTP_409_CONFLICT: {
+            "description": (
+                "Time already booked, client already registered, or no policy. "
+                "Or (detail.code 'overlap') it overlaps other appointments: send confirm_overlap to book it anyway"
+            )
+        },
     },
 )
 def book_appointment(
@@ -589,6 +643,11 @@ def book_appointment(
     current_policy = policies.get_current_policy(session)
     if current_policy is None or current_policy.id is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "No booking policy is published yet.")
+    if data.deposit_paid and not is_deposit_required(data.service):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "This service has no deposit.")
+
+    # Before creating a new client: a refused booking must leave nothing behind.
+    refuse_unconfirmed_overlap(session, data)
 
     if data.user_id is not None:
         client = admin.get_client(session, data.user_id)
@@ -606,8 +665,6 @@ def book_appointment(
 
     if client.id is None:
         raise RuntimeError("Client without id.")
-    if data.deposit_paid and not is_deposit_required(data.service):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "This service has no deposit.")
 
     now = utc_now()
     appointment = admin.book_appointment_by_studio(
@@ -660,6 +717,25 @@ def get_payments(session: DatabaseSession) -> AdminPaymentsResponse:
             recent_cancellations=results(admin.recent_cancellations(session, now)),
         ),
     )
+
+
+@router.put(
+    "/appointments/{appointment_id}/completed",
+    description=(
+        "Fix an appointment already completed: service, details, day and time, final price, "
+        "how long it took or its notes. The client gets no email"
+    ),
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "Appointment does not exist"},
+        status.HTTP_409_CONFLICT: {"description": "Not completed, or the new time is taken by another appointment"},
+    },
+)
+def edit_completed_appointment(
+    session: DatabaseSession, appointment_id: int, data: CompletedAppointmentDetails
+) -> AdminAppointmentResponse:
+    appointment = admin.edit_completed_appointment(session, appointment_id, **data.model_dump())
+    client = admin.get_client(session, appointment.user_id)
+    return AdminAppointmentResponse(status="OK", detail=AdminAppointmentResult.from_row(appointment, client, utc_now()))
 
 
 @router.post(
@@ -933,7 +1009,12 @@ def remove_expense(session: DatabaseSession, expense_id: int) -> MessageResponse
     ),
     responses={
         status.HTTP_404_NOT_FOUND: {"description": "Appointment does not exist"},
-        status.HTTP_409_CONFLICT: {"description": "Not active anymore, or the new time is already booked"},
+        status.HTTP_409_CONFLICT: {
+            "description": (
+                "Not active anymore, or the new time is already booked. "
+                "Or (detail.code 'overlap') it overlaps other appointments: send confirm_overlap to change it anyway"
+            )
+        },
     },
 )
 def change_appointment(
@@ -942,6 +1023,10 @@ def change_appointment(
     data: StudioAppointmentDetails,
     background_tasks: BackgroundTasks,
 ) -> AdminAppointmentResponse:
+    current = session.get(Appointment, appointment_id)
+    if current is not None:
+        refuse_unconfirmed_overlap(session, data, exclude=current)
+
     now = utc_now()
     changed = admin.change_appointment_by_studio(
         session,
