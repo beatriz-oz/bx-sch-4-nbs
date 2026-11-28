@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:4200"
     min_booking_advance_hours: int = 24
     deposit_overdue_days: int = 2
+    # How long a client's booking is taken to last when deciding which times she can book: the
+    # longest service. A time is closed for clients if this period overlaps an active appointment.
+    client_slot_minutes: int = 180
     # Expected duration of each service, in minutes: draws the agenda and counts the hours
     # worked when the real duration was not recorded at completion.
     service_durations_minutes: dict[Service, int] = {

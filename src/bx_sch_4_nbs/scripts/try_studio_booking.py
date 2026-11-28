@@ -164,6 +164,8 @@ response = book(
         "service": "Removal",
         "estimated_price": "10",
         "user_id": ANA,
+        # In the next hours: the local database may have a real appointment around then.
+        "confirm_overlap": True,
     }
 )
 detail = detail_of(response)
@@ -290,6 +292,8 @@ response = book(
         "estimated_price": "15",
         "user_id": ANA,
         "deposit_paid": True,
+        # Ten minutes apart on purpose: the overlap warning is not what is tested here.
+        "confirm_overlap": True,
     }
 )
 detail = detail_of(response)
@@ -326,6 +330,7 @@ response = book(
         "service": "Removal",
         "estimated_price": "15",
         "user_id": ANA,
+        "confirm_overlap": True,
     }
 )
 detail = detail_of(response)

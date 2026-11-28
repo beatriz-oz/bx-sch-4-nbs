@@ -161,6 +161,23 @@ def keeps_deposit(appointment: Appointment) -> bool:
     return appointment.status == AppointmentStatus.CANCELLED and appointment.cancellation_reason in KEPT_DEPOSIT_REASONS
 
 
+def month_bookings(session: Session, year: int, month: int) -> tuple[int, int]:
+    """
+    Clients and appointments booked in a month (Lisbon), done or not, future included: the same
+    count as the report's month agenda (cancellations and no-shows left out).
+    """
+    start = to_utc(datetime(year, month, 1))  # noqa: DTZ001 - a Lisbon wall-clock time, converted to UTC
+    end = to_utc(datetime(year + month // 12, month % 12 + 1, 1))  # noqa: DTZ001
+    rows = session.exec(
+        select(Appointment.user_id).where(
+            col(Appointment.scheduled_at) >= start,
+            col(Appointment.scheduled_at) < end,
+            col(Appointment.status).in_(BOOKED_STATUSES),
+        )
+    ).all()
+    return len(set(rows)), len(rows)
+
+
 def year_report(session: Session, year: int) -> list[MonthReport]:
     """
     The 12 months of a year in the studio's calendar (Lisbon). An appointment counts in the

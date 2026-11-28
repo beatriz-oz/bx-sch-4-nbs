@@ -89,6 +89,36 @@ check("mes publicado: published_at preenchido", agenda(2031, 3).json()["detail"]
 check("mes invalido: 422", agenda(2031, 13).status_code == 422)
 check("sem login: 401", client.get("/v1/admin/agenda", params={"year": 2031, "month": 3}).status_code == 401)
 
+# --- How many clients are booked in the month (done or not, future included) ---
+check(
+    "1 appointment booked in March: 1 client, 1 appointment",
+    (detail.get("booked_clients"), detail.get("booked_appointments")) == (1, 1),
+    detail.get("booked_clients"),
+)
+for day_number, status in (
+    (12, AppointmentStatus.COMPLETED),
+    (19, AppointmentStatus.CANCELLED),
+    (26, AppointmentStatus.NO_SHOW),
+):
+    session.add(
+        Appointment(
+            user_id=admin.id,
+            scheduled_at=to_utc(datetime(2031, 3, day_number, 10, 0)),
+            status=status,
+            service=Service.REMOVAL,
+            estimated_price=Decimal(10),
+            policy_id=policy.id,
+        )
+    )
+session.commit()
+month_detail = agenda(2031, 3).json()["detail"]
+check(
+    "a completed one counts; cancelled and no-show do not; the same client counts once",
+    (month_detail["booked_clients"], month_detail["booked_appointments"]) == (1, 2),
+    (month_detail["booked_clients"], month_detail["booked_appointments"]),
+)
+check("another month has its own count", agenda(2031, 4).json()["detail"]["booked_appointments"] == 0)
+
 # The studio opens a Monday through the API (it used to refuse Mondays).
 r = client.put("/v1/admin/schedule-exceptions", json={"day": "2031-03-17", "is_open": True}, headers=ADMIN)
 check("abrir uma segunda pela API -> aceite", r.status_code in (200, 201), r.text[:200])
