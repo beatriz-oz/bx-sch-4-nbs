@@ -13,6 +13,7 @@ from typing import Literal
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.worksheet import Worksheet
 
 from bx_sch_4_nbs.database.models import Appointment, User
 from bx_sch_4_nbs.database.queries.reports import keeps_deposit
@@ -146,15 +147,66 @@ def received(appointment: Appointment, deposit_amount: Decimal) -> Decimal:
     return Decimal(0)
 
 
-def appointments_workbook(rows: list[tuple[Appointment, User]], language: Language, deposit_amount: Decimal) -> bytes:
+MONTHS: dict[Language, list[str]] = {
+    "pt": [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+    ],
+    "en": [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ],
+}  # fmt: skip
+
+
+def months_between(first_day: date, last_day: date) -> list[tuple[int, int]]:
+    """(year, month) of every month the period touches, in order: Nov 2026, Dec 2026, Jan 2027…"""
+    months = []
+    year, month = first_day.year, first_day.month
+    while (year, month) <= (last_day.year, last_day.month):
+        months.append((year, month))
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return months
+
+
+def appointments_workbook(
+    rows: list[tuple[Appointment, User]],
+    language: Language,
+    deposit_amount: Decimal,
+    months: list[tuple[int, int]] | None = None,
+) -> bytes:
+    """
+    One sheet with every appointment, or, with `months`, one sheet per month ("Novembro 2026"),
+    each with its own appointments and total. A month without appointments still gets its sheet.
+    """
+    book = Workbook()
+    first_sheet = book.active
+    if first_sheet is None:
+        raise RuntimeError("A new workbook always has a sheet.")
+
+    if months is None:
+        first_sheet.title = TEXTS[language]["sheet"]
+        fill_sheet(first_sheet, rows, language, deposit_amount)
+    else:
+        by_month: dict[tuple[int, int], list[tuple[Appointment, User]]] = {month: [] for month in months}
+        for appointment, user in rows:
+            local = to_studio_time(appointment.scheduled_at)
+            by_month.setdefault((local.year, local.month), []).append((appointment, user))
+        book.remove(first_sheet)
+        for (year, month), month_rows in by_month.items():
+            sheet = book.create_sheet(f"{MONTHS[language][month - 1]} {year}")
+            fill_sheet(sheet, month_rows, language, deposit_amount)
+
+    buffer = BytesIO()
+    book.save(buffer)
+    return buffer.getvalue()
+
+
+def fill_sheet(
+    sheet: Worksheet, rows: list[tuple[Appointment, User]], language: Language, deposit_amount: Decimal
+) -> None:
     texts = TEXTS[language]
     yes_no = {True: texts["yes"], False: texts["no"]}
-
-    book = Workbook()
-    sheet = book.active
-    if sheet is None:
-        raise RuntimeError("A new workbook always has a sheet.")
-    sheet.title = texts["sheet"]
 
     columns = [
         ("date", 12, "DD/MM/YYYY"),
@@ -225,10 +277,6 @@ def appointments_workbook(rows: list[tuple[Appointment, User]], language: Langua
 
     sheet.freeze_panes = "A2"
     sheet.auto_filter.ref = f"A1:{get_column_letter(len(columns))}{max(last, 1)}"
-
-    buffer = BytesIO()
-    book.save(buffer)
-    return buffer.getvalue()
 
 
 def export_filename(first_day: date, last_day: date, language: Language) -> str:
