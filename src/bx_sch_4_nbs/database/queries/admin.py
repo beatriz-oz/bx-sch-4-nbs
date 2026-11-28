@@ -282,6 +282,53 @@ def change_appointment_by_studio(
     return changes.ChangedAppointment(appointment, previous)
 
 
+def edit_completed_appointment(
+    session: Session,
+    appointment_id: int,
+    *,
+    scheduled_at: datetime,
+    service: Service,
+    nail_size: NailSize | None,
+    nail_art_level: NailArtLevel | None,
+    broken_nails: int,
+    has_other_professional_nails: bool,
+    trade_item: TradeItem | None,
+    notes: str | None,
+    final_price: Decimal,
+    duration_minutes: int,
+    completion_notes: str | None,
+) -> Appointment:
+    """
+    Fixes what was recorded for an appointment already done (e.g. booked as maintenance, but it was
+    an application). No email: the client is not told. The estimated price stays as it was booked.
+    """
+    appointment = session.get(Appointment, appointment_id)
+    if appointment is None:
+        raise ResourceDoesNotExistError(f"Appointment {appointment_id} does not exist.")
+    if appointment.status != AppointmentStatus.COMPLETED:
+        raise AppointmentNotActiveError("Only completed appointments can be fixed here.")
+
+    if scheduled_at != appointment.scheduled_at:
+        # Moves its booked slot too (it keeps the time taken), but nothing starts again: it is done.
+        reminder_sent_at = appointment.reminder_sent_at
+        changes.move_appointment(session, appointment, scheduled_at, appointment.attendance_confirmed_at)
+        appointment.reminder_sent_at = reminder_sent_at
+
+    appointment.service = service
+    appointment.nail_size = nail_size
+    appointment.nail_art_level = nail_art_level
+    appointment.broken_nails = broken_nails
+    appointment.has_other_professional_nails = has_other_professional_nails
+    appointment.trade_item = trade_item
+    appointment.notes = notes
+    appointment.final_price = final_price
+    appointment.duration_minutes = duration_minutes
+    appointment.completion_notes = completion_notes
+    session.add(appointment)
+    session.flush()
+    return appointment
+
+
 def search_clients(session: Session, search: str, limit: int) -> list[User]:
     term = search.strip().lstrip("@")
     conditions = [

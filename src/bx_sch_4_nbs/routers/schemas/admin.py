@@ -204,6 +204,8 @@ class StudioAppointmentDetails(BaseModel):
     # Trades only: what is traded, and how long it takes (the other services use their usual duration).
     trade_item: TradeItem | None = None
     duration_minutes: int | None = Field(default=None, ge=15, le=600)
+    # The studio saw that it overlaps other appointments and books it anyway.
+    confirm_overlap: bool = False
 
     @model_validator(mode="after")
     def validate_details(self) -> Self:
@@ -231,6 +233,48 @@ class StudioAppointmentDetails(BaseModel):
             raise ValueError("Describe the service in notes.")
 
         # BookedSlot compares exact instants: without this, 13:00:00 and 13:00:30 would not collide.
+        self.scheduled_at = self.scheduled_at.replace(second=0, microsecond=0)
+        return self
+
+
+class CompletedAppointmentDetails(BaseModel):
+    """Fixing an appointment already done: what was really done, the price charged and the time it took."""
+
+    scheduled_at: UtcDatetime
+    service: Service
+    nail_size: NailSize | None = None
+    nail_art_level: NailArtLevel | None = None
+    broken_nails: int = Field(default=0, ge=0, le=10)
+    has_other_professional_nails: bool = False
+    trade_item: TradeItem | None = None
+    notes: str | None = Field(default=None, max_length=1000)
+    final_price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    duration_minutes: int = Field(ge=15, le=600)
+    completion_notes: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_details(self) -> Self:
+        # The same rules as booking, except that every service has a duration here.
+        if self.service == Service.TRADING:
+            if self.trade_item is None:
+                raise ValueError("Choose what is traded: nails or press-ons.")
+            if self.final_price != 0:
+                raise ValueError("A trade has no price.")
+            if self.trade_item == TradeItem.PRESS_ONS and (self.nail_size or self.nail_art_level):
+                raise ValueError("Press-ons do not take nail size or nail art level.")
+            if self.broken_nails:
+                raise ValueError("A trade does not take broken nails.")
+        elif self.trade_item is not None:
+            raise ValueError("Only a trade takes a trade item.")
+        elif self.service in (Service.REMOVAL, Service.OTHER, Service.PRESS_ON):
+            if self.nail_size is not None or self.nail_art_level is not None or self.broken_nails:
+                raise ValueError(f"{self.service.value} does not take nail size, nail art level or broken nails.")
+        elif self.nail_size is None or self.nail_art_level is None:
+            raise ValueError("Nail size and nail art level are required for this service.")
+
+        if self.service in (Service.OTHER, Service.TRADING) and not (self.notes and self.notes.strip()):
+            raise ValueError("Describe the service in notes.")
+
         self.scheduled_at = self.scheduled_at.replace(second=0, microsecond=0)
         return self
 

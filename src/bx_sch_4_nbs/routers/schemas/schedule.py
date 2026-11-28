@@ -62,6 +62,7 @@ class AgendaSlotResult(BaseModel):
     time: time
     is_open: bool
     is_booked: bool
+    is_overlapped: bool
 
 
 class AgendaDay(BaseModel):
@@ -76,6 +77,9 @@ class AgendaMonth(BaseModel):
     published_at: StudioDatetime | None
     notified_at: StudioDatetime | None
     days: list[AgendaDay]
+    # Booked in the month, done or not, future included (cancellations and no-shows left out).
+    booked_clients: int
+    booked_appointments: int
 
 
 class DaySlotsSet(BaseModel):
